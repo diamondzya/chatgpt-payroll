@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(workflows list *)",
+      "Read(//c/Users/cyrus/.claude/projects/c--Users-cyrus-OneDrive-Documents-GitHub-chatgpt-payroll/6c0971cc-b715-43e2-be6e-658114d57aa4/subagents/workflows/wf_62675486-bc1/**)",
+      "Bash(workflows)"
+    ]
+  }
+}
