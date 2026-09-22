@@ -14,5 +14,7 @@ export const firebaseConfig = {
 export const cloudSettings = {
   enabled: true,
   workspaceId: "ph-payroll-main",
-  ownerEmail: "madriagakenneth22@gmail.com"
+  ownerEmail: "madriagakenneth22@gmail.com",
+  databaseId: "(default)",
+  forceLongPolling: true
 };

@@ -168,3 +168,14 @@ Use **Settings → Backup & restore** to export JSON backups even when Firebase 
 ## Production notes
 
 This version improves cross-device identity and data sharing, but a live payroll deployment should still have formal operational controls, regular backups, Firebase App Check where appropriate, reviewed Firestore rules, least-privilege roles, HTTPS, and a controlled process for payroll approval and statutory updates.
+
+## Troubleshooting: Google sign-in works but Firestore says unavailable
+
+If the Google account chooser succeeds but the app stays on the secure-access screen with a Firestore `unavailable` message, Firebase Authentication is working and the failure is specifically the Firestore data connection.
+
+1. In Firebase Console open **Build → Firestore Database**. If you still see **Create database**, create Cloud Firestore first.
+2. This build expects the database ID `(default)`. If you intentionally created a named Firestore database, change `cloudSettings.databaseId` in `js/firebase-config.js` to that database ID.
+3. Publish the included `firestore.rules` and make sure its owner email exactly matches `cloudSettings.ownerEmail`.
+4. On the secure-access screen click **Run Firestore diagnostic**. A 404 for the member document can be normal before first bootstrap; the diagnostic will specifically call out a missing database when the backend reports it.
+5. This build sets `forceLongPolling: true`. Firebase documents forced long-polling as a compatibility option for proxies, antivirus software, or other environments that buffer/interrupt Firestore WebChannel traffic. If your network is known-good, it can later be set to `false`.
+6. If the diagnostic cannot reach `firestore.googleapis.com`, try an InPrivate/Incognito window with extensions disabled, temporarily test another network/device, and review firewall/antivirus web filtering.

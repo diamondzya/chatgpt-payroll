@@ -131,3 +131,12 @@
 - Cloud metadata is now written only after collection records succeed and includes `initialized: true`, preventing an incomplete prior bootstrap from being mistaken for a valid empty cloud workspace.
 - Existing partial `state/meta` created by the failed bootstrap is automatically treated as uninitialized so the Super Admin can safely seed Firestore from the intact local workspace.
 - Post-Google Firestore errors are now persistent on the sign-in screen, with retry and switch-account controls instead of silently signing the user back out.
+
+## Firestore connectivity update
+
+- Firebase Authentication success is now separated from Firestore connectivity errors.
+- Cloud Firestore is initialized with forced long-polling for better compatibility with GitHub Pages users behind buffering proxies, antivirus software, or restrictive networks.
+- Added `cloudSettings.databaseId` (defaults to `(default)`) and `forceLongPolling` in `js/firebase-config.js`.
+- Added **Run Firestore diagnostic** on the login gate after Google authentication succeeds but Firestore cannot open.
+- The diagnostic calls the Firestore REST endpoint with the current Firebase ID token and distinguishes backend reachability, missing default database, permission/rules problems, rejected auth, and browser/network blocking.
+- Improved the `unavailable` message with the configured Firebase project/database and concrete checks.

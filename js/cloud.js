@@ -3,10 +3,11 @@ import {firebaseConfig,cloudSettings} from './firebase-config.js';
 const SDK='12.19.0';
 const stateCollections=['employees','attendance','holidays','loans','payrolls','audit','rules','closures'];
 let api=null,app=null,auth=null,db=null,currentUser=null,currentMember=null,lastLoadedState=null;
+const databaseId=cloudSettings.databaseId||'(default)';
 
 function configured(){return Boolean(cloudSettings.enabled&&firebaseConfig.apiKey&&firebaseConfig.authDomain&&firebaseConfig.projectId&&firebaseConfig.appId&&cloudSettings.workspaceId)}
 export function cloudEnabled(){return configured()}
-export function cloudConfigStatus(){return {enabled:configured(),workspaceId:cloudSettings.workspaceId,ownerEmail:cloudSettings.ownerEmail,projectId:firebaseConfig.projectId||'',configuredFields:Boolean(firebaseConfig.apiKey&&firebaseConfig.authDomain&&firebaseConfig.projectId&&firebaseConfig.appId)}}
+export function cloudConfigStatus(){return {enabled:configured(),workspaceId:cloudSettings.workspaceId,ownerEmail:cloudSettings.ownerEmail,projectId:firebaseConfig.projectId||'',databaseId,forceLongPolling:cloudSettings.forceLongPolling!==false,configuredFields:Boolean(firebaseConfig.apiKey&&firebaseConfig.authDomain&&firebaseConfig.projectId&&firebaseConfig.appId)}}
 
 async function imports(){
   if(api)return api;
@@ -22,7 +23,15 @@ export async function initCloud(){
   if(!configured())return false;
   const f=await imports();
   app=f.getApps().length?f.getApp():f.initializeApp(firebaseConfig);
-  auth=f.getAuth(app);db=f.getFirestore(app);
+  auth=f.getAuth(app);
+  // Firestore's WebChannel transport can be blocked/buffered by some proxies,
+  // antivirus products and restrictive browser/network setups. Force long polling
+  // for this static GitHub Pages deployment unless explicitly disabled.
+  db=f.initializeFirestore(app,{
+    ignoreUndefinedProperties:true,
+    experimentalForceLongPolling:cloudSettings.forceLongPolling!==false,
+    experimentalLongPollingOptions:{timeoutSeconds:25}
+  },databaseId);
   try{await f.setPersistence(auth,f.browserLocalPersistence)}catch{}
   // Complete a redirect sign-in when a browser blocks popups. getRedirectResult()
   // is safe to call when there is no pending redirect and surfaces redirect errors.
@@ -60,7 +69,7 @@ function friendlyWorkspaceError(error){
   const messages={
     'permission-denied':'Google sign-in succeeded, but Firestore denied access to this payroll workspace. Publish the included firestore.rules in Firebase Console and make sure the owner email in those rules exactly matches js/firebase-config.js.',
     'failed-precondition':'Google sign-in succeeded, but Cloud Firestore is not ready for this project. Create the Firestore database in Firebase Console, then publish the included firestore.rules.',
-    'unavailable':'Google sign-in succeeded, but Firestore is temporarily unavailable. Check the connection and try again.',
+    'unavailable':`Google sign-in succeeded, but Firestore could not reach the backend (unavailable). Verify that Cloud Firestore exists in project ${firebaseConfig.projectId} using database ${databaseId}, publish the Firestore rules, and make sure your browser/network is not blocking firestore.googleapis.com. This build uses long-polling for better GitHub Pages / proxy compatibility.`,
     'unauthenticated':'Firebase lost the authenticated Google session before the payroll workspace could be opened. Sign in again.'
   };
   return messages[code]||error?.message||'The payroll cloud workspace could not be opened.';
@@ -208,4 +217,29 @@ export async function listCloudAccess(){
 }
 export async function deactivateCloudMember(uid){assertAdmin();if(uid===currentUser.uid)throw Error('You cannot deactivate your own signed-in account.');const target=await memberDoc(uid);if(!target)throw Error('Cloud member not found.');if(target.role==='SUPER_ADMIN')throw Error('The Super Admin cannot be deactivated here.');await api.setDoc(wsDoc('members',uid),{active:false,deactivatedAt:api.serverTimestamp(),deactivatedBy:currentUser.uid},{merge:true})}
 export async function cancelCloudInvite(email){assertAdmin();await api.setDoc(wsDoc('invites',normalizedEmail(email)),{active:false,cancelledAt:api.serverTimestamp(),cancelledBy:currentUser.uid},{merge:true})}
+export async function diagnoseCloudConnection(){
+  if(!currentUser)throw Error('Sign in with Google before running the Firestore diagnostic.');
+  const token=await currentUser.getIdToken();
+  const project=encodeURIComponent(firebaseConfig.projectId);
+  const dbId=encodeURIComponent(databaseId);
+  const ws=encodeURIComponent(cloudSettings.workspaceId);
+  const uid=encodeURIComponent(currentUser.uid);
+  const url=`https://firestore.googleapis.com/v1/projects/${project}/databases/${dbId}/documents/workspaces/${ws}/members/${uid}`;
+  try{
+    const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+    let body='';try{body=await response.text()}catch{}
+    const normalized=body.slice(0,700).replace(/\\s+/g,' ').trim();
+    if(response.ok)return {ok:true,status:response.status,summary:'Firestore REST endpoint is reachable and the member document is readable.'};
+    if(response.status===404){
+      if(/database.*does not exist|not found.*database/i.test(normalized))return {ok:false,status:404,summary:`The Firestore database ${databaseId} does not exist in project ${firebaseConfig.projectId}. Create the (default) Firestore database or set cloudSettings.databaseId to the database you created.`};
+      return {ok:true,status:404,summary:'Firestore REST endpoint is reachable. The member document does not exist yet, which is normal before the first successful owner bootstrap.'};
+    }
+    if(response.status===403)return {ok:false,status:403,summary:'Firestore is reachable, but the current security rules denied this request. Publish the included firestore.rules and verify the owner email.'};
+    if(response.status===401)return {ok:false,status:401,summary:'Firestore is reachable, but the Firebase ID token was rejected. Sign out, sign in again, and verify the Firebase project configuration.'};
+    return {ok:false,status:response.status,summary:`Firestore REST endpoint responded with HTTP ${response.status}${normalized?`: ${normalized}`:''}`};
+  }catch(error){
+    return {ok:false,status:0,summary:`The browser could not reach firestore.googleapis.com: ${error?.message||'network request failed'}. Check antivirus, firewall, extensions, DNS, or try another network.`};
+  }
+}
+
 export function roleLabel(role){return role==='SUPER_ADMIN'?'Super Admin':role==='ADMIN'?'Admin / HR':'Employee'}
