@@ -17,7 +17,7 @@ export const firebaseConfig = {
 };
 
 export const cloudSettings = {
-  enabled: false,
+  enabled: true,
   workspaceId: 'sahod-main',
-  ownerEmail: 'owner@example.com'
+  ownerEmail: 'madriagakenneth22@gmail.com'
 };
