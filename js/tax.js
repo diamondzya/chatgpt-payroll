@@ -1,7 +1,0 @@
-import {round,sum} from './utils.js';import {selectRule} from './statutory.js';
-export function calculateWithholdingTax(taxable,frequency,rule){const table=rule.values[frequency];if(!table)throw Error('Unknown tax frequency.');const amount=Math.max(0,round(taxable));const bracket=table.find(b=>amount>=b.minimum&&(b.maximum===null||amount<=b.maximum));if(!bracket)throw Error('Tax table has a gap.');const excess=Math.max(0,amount-bracket.excessOver);return {amount:round(bracket.baseTax+excess*bracket.percentage),taxable:amount,bracket,excess,frequency,version:rule.version}}
-export const calculateDailyTax=(n,r)=>calculateWithholdingTax(n,'daily',r);
-export const calculateWeeklyTax=(n,r)=>calculateWithholdingTax(n,'weekly',r);
-export const calculateSemiMonthlyTax=(n,r)=>calculateWithholdingTax(n,'semiMonthly',r);
-export const calculateMonthlyTax=(n,r)=>calculateWithholdingTax(n,'monthly',r);
-export function calculateYearEndAdjustment(state,employee,year){const runs=state.payrolls.filter(p=>p.status==='Paid'&&p.payDate.startsWith(String(year)));const lines=runs.flatMap(p=>p.lines.filter(l=>l.employeeId===employee.id));const taxable=sum(lines,'taxable')+(employee.previousTaxable||0);const already=sum(lines,'tax')+(employee.previousTaxWithheld||0);const result=calculateWithholdingTax(taxable,'annual',selectRule(state,'tax',`${year}-12-31`));return {employeeId:employee.id,taxable,taxDue:result.amount,taxWithheld:already,adjustment:result.amount-already,previousTaxable:employee.previousTaxable||0,previousTaxWithheld:employee.previousTaxWithheld||0}}
