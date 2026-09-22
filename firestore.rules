@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function email() { return signedIn() ? request.auth.token.email : null; }
+    function member(ws) { return get(/databases/$(database)/documents/workspaces/$(ws)/members/$(request.auth.uid)).data; }
+    function isMember(ws) { return signedIn() && exists(/databases/$(database)/documents/workspaces/$(ws)/members/$(request.auth.uid)) && member(ws).active == true; }
+    function isAdmin(ws) { return isMember(ws) && (member(ws).role == 'ADMIN' || member(ws).role == 'SUPER_ADMIN'); }
+    function isSuperAdmin(ws) { return isMember(ws) && member(ws).role == 'SUPER_ADMIN'; }
+
+    match /workspaces/{ws}/members/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin(ws));
+      allow create: if signedIn() && request.auth.uid == uid && request.resource.data.active == true && (
+        (email() == 'madriagakenneth22@gmail.com' && request.resource.data.role == 'SUPER_ADMIN') ||
+        (exists(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())) &&
+         get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.active == true &&
+         request.resource.data.role == get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.role &&
+         request.resource.data.employeeId == get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.employeeId &&
+         request.resource.data.email == email())
+      );
+      allow update, delete: if isSuperAdmin(ws);
+    }
+
+    match /workspaces/{ws}/invites/{inviteEmail} {
+      allow read: if isAdmin(ws) || (signedIn() && email() == inviteEmail);
+      allow create, update, delete: if isAdmin(ws) || (signedIn() && email() == inviteEmail && resource.data.active == true && request.resource.data.active == false && request.resource.data.role == resource.data.role && request.resource.data.employeeId == resource.data.employeeId);
+    }
+
+    match /workspaces/{ws}/state/{docId} {
+      allow read, write: if isAdmin(ws);
+    }
+    match /workspaces/{ws}/employees/{docId} { allow read, write: if isAdmin(ws); }
+    match /workspaces/{ws}/attendance/{docId} { allow read, write: if isAdmin(ws); }
+    match /workspaces/{ws}/holidays/{docId} { allow read, write: if isAdmin(ws); }
+    match /workspaces/{ws}/loans/{docId} { allow read, write: if isAdmin(ws); }
+    match /workspaces/{ws}/payrolls/{docId} { allow read, write: if isAdmin(ws); }
+    match /workspaces/{ws}/audit/{docId} { allow read, write: if isAdmin(ws); }
+    match /workspaces/{ws}/rules/{docId} { allow read, write: if isAdmin(ws); }
+    match /workspaces/{ws}/closures/{docId} { allow read, write: if isAdmin(ws); }
+
+    match /workspaces/{ws}/employeeAccess/{employeeId} {
+      allow read: if isAdmin(ws) || (isMember(ws) && member(ws).role == 'EMPLOYEE' && member(ws).employeeId == employeeId);
+      allow write: if isAdmin(ws);
+    }
+  }
+}
