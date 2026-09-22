@@ -11,7 +11,7 @@ service cloud.firestore {
     match /workspaces/{ws}/members/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin(ws));
       allow create: if signedIn() && request.auth.uid == uid && request.resource.data.active == true && (
-        (email() == 'madriagakenneth22@gmail.com' && request.resource.data.role == 'SUPER_ADMIN') ||
+        (email() == 'madriagakennet22@gmail.com' && request.resource.data.role == 'SUPER_ADMIN') ||
         (exists(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())) &&
          get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.active == true &&
          request.resource.data.role == get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.role &&

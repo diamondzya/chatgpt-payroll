@@ -24,6 +24,12 @@ export async function initCloud(){
   app=f.getApps().length?f.getApp():f.initializeApp(firebaseConfig);
   auth=f.getAuth(app);db=f.getFirestore(app);
   try{await f.setPersistence(auth,f.browserLocalPersistence)}catch{}
+  // Complete a redirect sign-in when a browser blocks popups. getRedirectResult()
+  // is safe to call when there is no pending redirect and surfaces redirect errors.
+  try{await f.getRedirectResult(auth)}catch(error){
+    error.message=friendlyAuthError(error);
+    throw error;
+  }
   return true;
 }
 
@@ -33,12 +39,46 @@ function normalizedEmail(value){return String(value||'').trim().toLowerCase()}
 function publicUser(user){return user?{uid:user.uid,email:user.email||'',name:user.displayName||user.email||'Google user',picture:user.photoURL||''}:null}
 export function currentCloudIdentity(){return {user:publicUser(currentUser),member:currentMember?structuredClone(currentMember):null}}
 
-export async function signInCloud(){
-  await initCloud();
+function friendlyAuthError(error){
+  const code=String(error?.code||'');
+  const messages={
+    'auth/popup-blocked':'Your browser blocked the Google sign-in popup. Sahod will use full-page Google sign-in instead.',
+    'auth/popup-closed-by-user':'Google sign-in was closed before it finished.',
+    'auth/cancelled-popup-request':'Another Google sign-in request is already open.',
+    'auth/unauthorized-domain':'This website domain is not authorized in Firebase Authentication. Add the current host under Authentication → Settings → Authorized domains.',
+    'auth/operation-not-allowed':'Google sign-in is not enabled in Firebase Authentication.',
+    'auth/network-request-failed':'Google sign-in could not reach Firebase. Check the internet connection, firewall, or browser privacy settings.',
+    'auth/operation-not-supported-in-this-environment':'Popup sign-in is not supported in this browser context. Use the redirect sign-in flow.'
+  };
+  return messages[code]||error?.message||'Google sign-in could not be completed.';
+}
+
+export function cloudAuthMessage(error){return friendlyAuthError(error)}
+
+export async function signInCloud({forceRedirect=false}={}){
+  // initCloud() runs at application startup. Do not perform an awaited network import
+  // here before opening the popup because some browsers then treat it as not
+  // originating from the user's click and block it.
+  if(!api||!auth)throw Error('Firebase Authentication is still starting. Reload the page and try again.');
   const provider=new api.GoogleAuthProvider();
   provider.setCustomParameters({prompt:'select_account'});
-  const result=await api.signInWithPopup(auth,provider);
-  return publicUser(result.user);
+  if(forceRedirect){
+    await api.signInWithRedirect(auth,provider);
+    return null;
+  }
+  try{
+    const result=await api.signInWithPopup(auth,provider);
+    return publicUser(result.user);
+  }catch(error){
+    const code=String(error?.code||'');
+    if(code==='auth/popup-blocked'||code==='auth/operation-not-supported-in-this-environment'){
+      // Redirect is more reliable on strict/mobile browsers and does not depend on a popup.
+      await api.signInWithRedirect(auth,provider);
+      return null;
+    }
+    error.message=friendlyAuthError(error);
+    throw error;
+  }
 }
 export async function signOutCloud(){if(auth)await api.signOut(auth);currentUser=null;currentMember=null}
 export function onCloudAuth(callback){if(!auth)throw Error('Cloud authentication is not initialized.');return api.onAuthStateChanged(auth,user=>{currentUser=user;callback(publicUser(user))})}
