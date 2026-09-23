@@ -1,3 +1,13 @@
+
+## Premium login front page
+
+- Rebuilt the Google/Firebase login gate as a full-screen finance-themed front page.
+- Added the blue financial-growth background artwork with responsive dark overlays.
+- Added glassmorphism payroll access card, stronger Sahod branding, security status, and trust messaging.
+- Improved Google sign-in, Firestore retry/diagnostic states, long-email wrapping, and responsive mobile layout.
+- Prevented the underlying admin workspace from scrolling while the sign-in gate is open.
+- Fixed local prototype access leaving the page in a locked-scroll state.
+
 # 2026-09-23 Owner access recovery fix
 
 - Added automatic self-repair for the configured owner member record.

@@ -274,3 +274,8 @@ Notable hardening in these rules:
 - employees may read only their own leave records and create only pending leave requests for their own linked employee ID;
 - leave approval/update/delete remains administrator-only;
 - the previous broad owner wildcard workspace permission is removed after the normal Super Admin member bootstrap path became reliable.
+
+
+## Premium login front page
+
+The login screen uses `assets/login-finance-bg.png` as a finance/payroll visual backdrop. The sign-in card remains real HTML/CSS, so Google/Firebase buttons and authentication errors remain interactive and responsive instead of being baked into a screenshot.

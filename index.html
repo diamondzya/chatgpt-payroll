@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#06142b">
   <meta name="description" content="Sahod Philippine payroll workspace. Employees, QR attendance, payroll, contributions and BIR reports.">
   <title>Sahod · Philippine Payroll</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%232563eb'/%3E%3Cpath d='M11 13h19M11 20h15M11 27h10' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -38,13 +38,37 @@
   <div id="toasts" aria-live="polite"></div>
   <section id="print-root"></section>
   <section id="auth-gate" class="auth-gate hidden" aria-label="Sign in">
-    <div class="auth-card">
-      <div class="auth-brand"><span class="brand-mark">₱</span><div><strong>Sahod</strong><small>Company Payroll Workspace</small></div></div>
-      <h1>Secure payroll access</h1>
-      <p>Sign in or sign up using your authorized Google account.</p>
-      <div id="google-login-button" class="google-login-slot"></div>
-      <button class="btn" type="button" data-action="local-access">Continue in local prototype mode</button>
-      <small class="auth-foot">Production deployments should verify Google identity on a secure backend and use a central database.</small>
+    <div class="auth-ambient auth-ambient-one" aria-hidden="true"></div>
+    <div class="auth-ambient auth-ambient-two" aria-hidden="true"></div>
+    <div class="auth-shell">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <span class="brand-mark">₱</span>
+          <div><strong>Sahod</strong><small>Company Payroll Workspace</small></div>
+        </div>
+        <div class="auth-heading">
+          <span class="auth-kicker">PAYROLL &amp; PEOPLE OPS</span>
+          <h1>Secure payroll <span>access</span></h1>
+          <p>Sign in with your authorized Google account to access your company payroll workspace.</p>
+        </div>
+        <div id="google-login-button" class="google-login-slot"></div>
+        <button class="btn auth-local-btn" type="button" data-action="local-access">Continue in local prototype mode</button>
+        <div class="auth-secured"><span></span><small>SECURED BY GOOGLE</small><span></span></div>
+        <div class="auth-cloud-line">
+          <span class="auth-shield" aria-hidden="true">✓</span>
+          <div><strong>Firebase Authentication</strong><small>Shared cloud workspace · cross-device access</small></div>
+        </div>
+        <div class="auth-trust-card">
+          <span class="auth-lock" aria-hidden="true">▣</span>
+          <div><strong>Your payroll data is protected</strong><small>Authorized access, encrypted connections, and role-based permissions.</small></div>
+        </div>
+        <small class="auth-legal">By continuing, you confirm that you are authorized to access this payroll workspace.</small>
+      </div>
+      <div class="auth-visual-copy" aria-hidden="true">
+        <span>SMART PAYROLL OPERATIONS</span>
+        <strong>People. Pay. Progress.</strong>
+        <small>Attendance, payroll, compliance, and employee access in one secure workspace.</small>
+      </div>
     </div>
   </section>
   <script type="module" src="js/app.js"></script>
