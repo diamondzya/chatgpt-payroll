@@ -140,3 +140,31 @@
 - Added **Run Firestore diagnostic** on the login gate after Google authentication succeeds but Firestore cannot open.
 - The diagnostic calls the Firestore REST endpoint with the current Firebase ID token and distinguishes backend reachability, missing default database, permission/rules problems, rejected auth, and browser/network blocking.
 - Improved the `unavailable` message with the configured Firebase project/database and concrete checks.
+
+
+## 2026-09-23 · Reliability, QR, attendance, and cloud hardening
+
+- Made Firestore remote-first in cloud mode so failed cloud writes do not leave an unsynchronized local IndexedDB state.
+- Added cloud revision checks plus a short-lived workspace save lock to detect stale cross-device writes and prevent silent last-writer overwrites.
+- Added Firebase-authenticated audit actor details (`userUid`, `userEmail`).
+- Added QR credential lifecycle fields (`qrStatus`, `qrVersion`, issued/revoked timestamps and reason). Regenerating a QR invalidates the prior token; inactive employment revokes the credential.
+- Reduced QR payloads to the random credential token only; no employee name/email/salary data is encoded. Existing token-based QR payloads remain readable.
+- Added a five-second QR scan cooldown to reduce accidental immediate double punches.
+- Automatic Time In / Time Out uses Firebase server time when cloud admin/kiosk access is available and records whether the timestamp came from Firebase or device fallback.
+- Added configurable **Minimum OT minutes** and **Maximum shift hours** in Payroll settings.
+- Fixed a payroll bug where excess minutes at/below the OT threshold could fall back into ordinary basic pay.
+- Qualified overtime is excluded from pay until the attendance record is approved.
+- Long shifts beyond the configured maximum are blocked for manual review.
+- Improved attendance UI so it distinguishes approved OT from OT that still requires approval.
+- Tightened employee Google-email validation and prevents linking one Google account to multiple employees.
+- Cloud Employee self-service records stop exposing an active QR token when employment/credential is inactive.
+- Employee self-service now includes the latest synchronized attendance records, current clock status, and recent paid payroll summaries on any device using the linked Google account.
+- Normal Admin / HR accounts may deactivate Employee cloud members but may not modify roles or deactivate another Admin; Super Admin retains role-management authority.
+- Fixed the Users & Roles table renderer so pre-rendered cloud rows no longer throw a `rows.join is not a function` error.
+- Cloud saves now commit record changes, employee-access mirrors, member deactivations, and the new workspace revision in one atomic Firestore batch when within the safe browser write limit; oversized changes are rejected before partial data is written.
+- If a cloud commit succeeds but the local IndexedDB cache fails, the durable Firestore save is retained instead of rolling the UI back to stale data.
+- Added employee-specific scheduled break start, validation for work schedule/break times, and automatic QR punches now use that configured break start.
+- Backup restore now warns when cloud mode will replace the shared workspace as well as the local cache.
+- Attendance CSV templates now use the current date instead of a hard-coded sample date.
+- Added regression tests for the exact OT threshold, unapproved OT, configurable attendance limits, and QR revocation/reissue.
+- Validation: all application JavaScript passes syntax checks and the automated payroll suite passes **33/33 tests**.

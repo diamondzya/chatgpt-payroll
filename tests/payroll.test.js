@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';
+import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus,issueEmployeeQr,saveEmployee} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';import {table} from '../js/ui.js';
 const clean=()=>{const s=demoState();s.payrolls=[];s.employees=s.employees.slice(0,1);s.employees[0].payrollType='Daily';s.employees[0].hourlyRate=10000;s.employees[0].dailyRate=80000;s.employees[0].minimumWage=false;return s};
 const pay=(s,p)=>{storePayroll(s,p);transitionPayroll(s,p.id,'Reviewed');transitionPayroll(s,p.id,'Approved');transitionPayroll(s,p.id,'Paid');return p};
 const shift=(extra={})=>({date:'2026-09-14',status:'Present',timeIn:'09:00',timeOut:'20:00',breakStart:'12:00',breakMinutes:60,otApproved:true,...extra});
@@ -30,3 +30,51 @@ test('13th-month payment enters immutable payroll and is not released twice',()=
 test('annual refund is posted separately and reflected by 2316',()=>{const s=clean();pay(s,generatePayroll(s,{from:'2026-09-01',to:'2026-09-04',payDate:'2026-09-04'}));const p=yearEndPayroll(s,'2026','2026-12-31');assert(p.lines[0].tax<0);pay(s,p);const f=generate2316(s,2026,s.employees[0].id);assert.equal(f.annual.adjustment,0);assert.equal(f.annual.taxDue,f.annual.taxWithheld)});
 test('rule validation rejects gapped brackets and invalid rates',()=>{const s=clean(),r=structuredClone(s.rules[0]);r.values.rows[1].minimum++;assert.throws(()=>validateRule(r));const p=structuredClone(s.rules[1]);p.values.rate=2;assert.throws(()=>validateRule(p))});
 test('CSV handles quotes and escaping neutralizes markup',()=>{assert.equal(parseCSV('name,note\n"Santos, Mika","A ""quote"""')[0].name,'Santos, Mika');assert.equal(esc('<img src=x onerror="alert(1)">'),'&lt;img src=x onerror=&quot;alert(1)&quot;&gt;')});
+
+
+test('OT threshold minutes are not accidentally paid as ordinary basic time',()=>{
+  const s=clean();
+  const exactlyOneHour=payDay(s,shift({timeOut:'19:00'}),s.employees[0]);
+  assert.equal(exactlyOneHour.metrics.rawOvertimeMinutes,60);
+  assert.equal(exactlyOneHour.earnings.basic,80000);
+  assert.equal(exactlyOneHour.earnings.overtime,0);
+});
+
+test('qualified but unapproved overtime is excluded from payroll earnings',()=>{
+  const s=clean();
+  const r=payDay(s,shift({timeOut:'19:01',otApproved:false}),s.employees[0]);
+  assert.equal(r.metrics.overtimeMinutes,61);
+  assert.equal(r.earnings.basic,80000);
+  assert.equal(r.earnings.overtime,0);
+});
+
+test('overtime threshold and maximum shift length are configurable',()=>{
+  const s=clean();
+  s.settings.otMinimumMinutes=30;
+  const r=payDay(s,shift({timeOut:'18:31'}),s.employees[0]);
+  assert.equal(r.metrics.overtimeMinutes,31);
+  s.settings.maxShiftHours=9;
+  assert.throws(()=>payDay(s,shift({timeOut:'20:00'}),s.employees[0]),/configured 9-hour maximum/);
+});
+
+test('inactive employment revokes employee QR and reissue creates a new credential',()=>{
+  const s=clean(),e=s.employees[0],before=e.qrToken;
+  changeStatus(s,e.id,'INACTIVE','2026-09-16','Separation');
+  assert.equal(e.qrStatus,'REVOKED');
+  changeStatus(s,e.id,'ACTIVE','2026-09-17','Rehired');
+  const result=issueEmployeeQr(e,{reason:'Reactivated'});
+  assert.equal(e.qrStatus,'ACTIVE');
+  assert.notEqual(e.qrToken,before);
+  assert(result.version>=2);
+});
+
+
+test('employee schedule validation catches invalid break configuration',()=>{
+  const s=clean(),e=structuredClone(s.employees[0]);
+  assert.throws(()=>saveEmployee(s,{...e,effectiveDate:'2026-09-01',scheduleIn:'09:00',scheduleOut:'18:00',breakStart:'not-a-time',breakMinutes:60}),/break start/i);
+});
+
+test('table renderer accepts both row arrays and pre-rendered row markup',()=>{
+  assert.match(table(['A'],['<tr><td>one</td></tr>']),/one/);
+  assert.match(table(['A'],'<tr><td>two</td></tr>'),/two/);
+});

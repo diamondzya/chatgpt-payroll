@@ -16,7 +16,7 @@ Open `http://localhost:8080`.
 
 The project now supports Firebase Authentication + Cloud Firestore. When enabled, an authorized Admin/Super Admin who signs in with the same Google account on another device loads the same payroll workspace instead of a separate IndexedDB copy.
 
-Cloud mode is intentionally disabled until you configure your Firebase project.
+This repository is currently configured for the `ph-payroll-system` Firebase project and the `ph-payroll-main` workspace. If you fork or reuse it for another company, update `js/firebase-config.js` and `firestore.rules` together before deployment.
 
 ### 1. Create / select a Firebase project
 
@@ -69,20 +69,14 @@ Do not leave the payroll database on permissive test rules for production use.
 
 ### 4. Deploy the included Firestore rules
 
-Open `firestore.rules` and replace:
+The included `firestore.rules` is already scoped to the configured workspace and bootstrap owner for this project. If you change `cloudSettings.workspaceId` or `cloudSettings.ownerEmail`, update the same values in `firestore.rules` before publishing it.
 
-```text
-OWNER_EMAIL_HERE
-```
-
-with the exact same email you configured as `ownerEmail` in `js/firebase-config.js`.
-
-You can paste the rules into **Firestore Database → Rules**, or deploy with Firebase CLI.
+Paste the rules into **Firestore Database → Rules** and click **Publish**, or deploy them with Firebase CLI. Keeping a `firestore.rules` file in GitHub does **not** publish the rules to Firebase automatically.
 
 The rules implement these roles:
 
 - `SUPER_ADMIN` — full payroll workspace and cloud account management.
-- `ADMIN` — full payroll workspace; can invite employees.
+- `ADMIN` — full payroll workspace; can invite employees and deactivate Employee access, but cannot promote/deactivate another administrator.
 - `EMPLOYEE` — can read only their privacy-limited self-service employee/QR record, not the full company payroll database.
 
 ### 5. First cloud sign-in
@@ -97,6 +91,22 @@ After that:
 - payroll changes save to local IndexedDB cache **and** Firestore;
 - **Settings → Access & QR → Sync from cloud** reloads the current cloud state;
 - QR tokens are mirrored to employee self-service access records.
+
+
+## Reliability and security hardening in this build
+
+- Firestore is the source of truth in cloud mode; a failed remote save no longer leaves a newer unsynchronized local cache.
+- Cloud saves use a workspace revision and short-lived sync lock to reject stale cross-device writes instead of silently overwriting newer data.
+- Attendance QR payloads contain only the random QR credential token. Employee names, salary data, and Google email are not encoded in the QR.
+- QR credentials have issue/revoke/version state. Regenerating a QR invalidates the previous credential. Inactive employment revokes QR access.
+- QR scans use Firebase server time when the admin/kiosk is online; device time is used only as an explicit fallback and the authority is stored with the punch.
+- Accidental rapid repeat QR scans are ignored for a short cooldown period.
+- Overtime is payroll-eligible only when it is above the configured threshold **and** approved. Minutes at/below the threshold are no longer accidentally paid as ordinary basic time.
+- Shifts longer than the configured maximum are blocked for manual review.
+- Restores warn when they will replace the shared Firebase workspace, not only the browser cache.
+- Cloud audit entries record the authenticated Firebase UID/email in addition to the human-readable actor.
+- Employee self-service mirrors only privacy-limited data: QR state, up to 60 recent attendance records, current shift status, and up to 12 recent paid payroll summaries. Employees can refresh this data without receiving the full payroll workspace.
+- One cloud workspace save is committed atomically (record changes + employee access + member revocations + revision) within a safe client-side write limit, preventing partially applied multi-batch saves.
 
 ## Users and roles
 
@@ -119,7 +129,7 @@ After an employee is invited and signs in using the exact Google email:
 
 - the employee receives an Employee role;
 - the app opens a privacy-limited Employee Portal;
-- the employee can display their own attendance QR on any device using the same Google account;
+- the employee can display their own attendance QR, recent attendance, current clock status, and recent paid payroll summaries on any device using the same Google account;
 - the employee does not receive the full payroll workspace, other employees' salaries, BIR reports, or company settings.
 
 The company QR kiosk should normally be opened by an authorized payroll Admin/Super Admin. Because that kiosk loads the same Firestore workspace, it can recognize QR credentials generated on another authorized device.
