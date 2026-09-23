@@ -134,6 +134,32 @@ After an employee is invited and signs in using the exact Google email:
 
 The company QR kiosk should normally be opened by an authorized payroll Admin/Super Admin. Because that kiosk loads the same Firestore workspace, it can recognize QR credentials generated on another authorized device.
 
+
+
+## Employee-specific leave entitlement
+
+HR can assign annual paid leave credits per employee under **Employees → Edit employee → Annual leave entitlement**.
+
+Supported paid-credit categories:
+
+- Vacation Leave
+- Sick Leave
+- Emergency Leave
+- Bereavement Leave
+- Other paid leave
+
+Credits reset each calendar year. `Unpaid Leave` does not use a paid-credit entitlement.
+
+A leave request is still allowed even when the employee has no remaining paid credits. On HR approval:
+
+1. eligible scheduled workdays use the employee's remaining paid credits first;
+2. any excess eligible workdays are automatically created as **Unpaid Leave** attendance;
+3. HR can reject the request instead of approving it.
+
+Example: if an employee has 2 Vacation Leave days remaining and HR approves a 5-workday request, the system records **2 Paid Leave days + 3 Unpaid Leave days**.
+
+Employee detail and Employee self-service show Entitled, Used, Pending, and Remaining credits. Pending requests do not permanently consume credits until approval; the final allocation is recalculated at approval time so already-approved leave is respected.
+
 ## QR attendance
 
 - Each employee has a unique random QR token.

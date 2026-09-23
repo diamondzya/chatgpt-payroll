@@ -1,6 +1,7 @@
 import {firebaseConfig,cloudSettings} from './firebase-config.js';
 import {today} from './utils.js';
 import {statusOn} from './employees.js';
+import {leaveBalances} from './leave.js';
 
 const SDK='12.19.0';
 const stateCollections=['employees','attendance','leaves','holidays','loans','payrolls','audit','rules','closures'];
@@ -169,7 +170,12 @@ function accessRecord(employee,workspaceState){
     .filter(r=>r.employeeId===employee.id)
     .sort((a,b)=>String(b.requestedAt||b.from||'').localeCompare(String(a.requestedAt||a.from||'')))
     .slice(0,20)
-    .map(r=>({id:r.id,type:r.type,from:r.from,to:r.to,status:r.status,paid:r.paid===true,reviewNote:r.reviewNote||''}));
+    .map(r=>({
+      id:r.id,type:r.type,from:r.from,to:r.to,status:r.status,paid:r.paid===true,reviewNote:r.reviewNote||'',
+      approvedPaidDays:Number(r.approvedPaidDays||0),approvedUnpaidDays:Number(r.approvedUnpaidDays||0)
+    }));
+  const balanceYear=today().slice(0,4);
+  const balances=leaveBalances(workspaceState,employee.id,balanceYear);
   const payslips=(workspaceState?.payrolls||[])
     .filter(p=>p.status==='Paid')
     .flatMap(p=>(p.lines||[]).filter(l=>l.employeeId===employee.id).map(l=>({payrollId:p.id,number:p.number,payDate:p.payDate,period:p.period,kind:p.kind,gross:l.gross,totalDeductions:l.totalDeductions,net:l.net,tax:l.tax,contributions:{sss:l.contributions?.sss||0,philhealth:l.contributions?.philhealth||0,pagibig:l.contributions?.pagibig||0}})))
@@ -182,7 +188,7 @@ function accessRecord(employee,workspaceState){
     department:employee.department||'',position:employee.position||'',googleEmail:normalizedEmail(employee.googleEmail),
     companyName:workspaceState?.settings?.company?.tradeName||workspaceState?.settings?.company?.name||'',
     active,qrStatus:qrActive?'ACTIVE':'REVOKED',qrVersion:Number(employee.qrVersion||1),qrToken:qrActive?employee.qrToken:'',
-    recentAttendance:attendance,recentLeaves:leaves,recentPayslips:payslips
+    recentAttendance:attendance,recentLeaves:leaves,recentPayslips:payslips,leaveBalanceYear:balanceYear,leaveBalances:balances
   };
 }
 

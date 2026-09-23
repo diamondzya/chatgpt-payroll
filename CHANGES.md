@@ -202,3 +202,19 @@
 - Relaxed the employeeAccess Firestore read rule to rely on the authenticated member-to-employee link instead of duplicated mirror email/active fields, preventing valid employees from being locked out by older mirror documents.
 - Employee portal can fall back to its privacy-limited mirrored leave list if an older Firestore deployment temporarily blocks the direct leave query.
 - Removed the administrator Access & QR settings button from employee account/profile UI.
+
+
+## 2026-09-23 · Employee leave entitlement + login layout update
+
+- Added **employee-specific annual paid leave entitlements** for Vacation, Sick, Emergency, Bereavement, and Other paid leave.
+- HR/employer can set a different whole-day entitlement for every employee from the employee record.
+- Leave credits reset by calendar year; existing employees without configured credits migrate safely to `0` days until HR assigns them.
+- Leave requests are **not blocked** when paid credits are exhausted. HR may still approve or reject the request.
+- On approval, available paid credits are consumed first and any excess eligible workdays are automatically converted to **Unpaid Leave**.
+- Mixed requests are supported, e.g. a 5-workday Vacation Leave with 2 days remaining becomes **2 paid + 3 unpaid** when approved.
+- Leave balances now show Entitled, Used, Pending, and Remaining amounts in the employee detail view and Employee self-service portal.
+- Leave management now shows projected paid/unpaid allocation for pending requests and final allocation for approved requests.
+- Employee self-service now receives privacy-limited leave balance data through the existing `employeeAccess` mirror.
+- Added annual-reset and automatic-unpaid regression coverage.
+- Fixed the secure Google/Firebase login gate overflowing outside its card when Firestore errors and three retry buttons were shown. Retry controls now stack inside the card, wrap safely, and remain responsive on small screens.
+- Validation: all JavaScript passes syntax checks and the automated payroll/workflow suite passes **40/40 tests**.

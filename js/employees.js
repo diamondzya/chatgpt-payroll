@@ -2,6 +2,13 @@ import {validDate,uid,today} from './utils.js';
 import {audit} from './storage.js';
 
 export const statuses=['ACTIVE','INACTIVE','SUSPENDED','RESIGNED','TERMINATED'];
+export const leaveEntitlementTypes=['Vacation Leave','Sick Leave','Emergency Leave','Bereavement Leave','Other'];
+export function normalizeLeaveEntitlements(value={}){
+  return Object.fromEntries(leaveEntitlementTypes.map(type=>{
+    const n=Number(value?.[type]??0);
+    return [type,Number.isFinite(n)&&n>=0?Math.floor(n):0];
+  }));
+}
 
 export function statusOn(e,date){
   if(date<e.hireDate)return 'NOT_HIRED';
@@ -51,6 +58,10 @@ export function saveEmployee(state,input){
   if(Number(input.breakMinutes||0)>0&&!validClock(input.breakStart||'12:00'))throw Error('Enter a valid scheduled break start time.');
   if(Number(input.breakMinutes||0)<0||Number(input.breakMinutes||0)>240)throw Error('Unpaid break must be between 0 and 240 minutes.');
   if(input.minimumWage&&!input.wageBasis?.trim())throw Error('Enter the applicable regional wage order / basis for MWE status.');
+  input.leaveEntitlements=normalizeLeaveEntitlements(input.leaveEntitlements);
+  for(const [type,value] of Object.entries(input.leaveEntitlements)){
+    if(!Number.isInteger(value)||value<0||value>366)throw Error(`${type} entitlement must be a whole number from 0 to 366 days.`);
+  }
 
   input.googleEmail=normalizedEmail(input.googleEmail);
   input.email=String(input.email||'').trim();

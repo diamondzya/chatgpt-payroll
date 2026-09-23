@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance,approveAttendance,decideOvertime} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus,issueEmployeeQr,saveEmployee} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';import {table} from '../js/ui.js';import {saveLeaveRequest,approveLeave,cancelLeave} from '../js/leave.js';
+import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance,approveAttendance,decideOvertime} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus,issueEmployeeQr,saveEmployee} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';import {table} from '../js/ui.js';import {saveLeaveRequest,approveLeave,cancelLeave,leaveBalances,leavePaySummary} from '../js/leave.js';
 const clean=()=>{const s=demoState();s.payrolls=[];s.employees=s.employees.slice(0,1);s.employees[0].payrollType='Daily';s.employees[0].hourlyRate=10000;s.employees[0].dailyRate=80000;s.employees[0].minimumWage=false;return s};
 const pay=(s,p)=>{storePayroll(s,p);transitionPayroll(s,p.id,'Reviewed');transitionPayroll(s,p.id,'Approved');transitionPayroll(s,p.id,'Paid');return p};
 const shift=(extra={})=>({date:'2026-09-14',status:'Present',timeIn:'09:00',timeOut:'20:00',breakStart:'12:00',breakMinutes:60,otApproved:true,...extra});
@@ -130,4 +130,39 @@ test('approved regular payroll locks source attendance and void unlocks it',()=>
   transitionPayroll(s,p.id,'Voided','Correction before payment');
   assert.equal(a.reviewStatus,'APPROVED');
   assert.equal(a.payrollLockId,undefined);
+});
+
+
+test('employee-specific leave entitlement automatically converts excess approved days to unpaid',()=>{
+  const s=clean();s.attendance=[];s.leaves=[];
+  s.employees[0].leaveEntitlements={'Vacation Leave':1,'Sick Leave':0,'Emergency Leave':0,'Bereavement Leave':0,'Other':0};
+  const req=saveLeaveRequest(s,{employeeId:s.employees[0].id,type:'Vacation Leave',from:'2026-10-05',to:'2026-10-06',paid:true,note:'Family trip'});
+  const projected=leavePaySummary(s,req);
+  assert.equal(projected.paidDays,1);
+  assert.equal(projected.unpaidDays,1);
+  approveLeave(s,req.id,{reviewer:'HR'});
+  const generated=s.attendance.filter(a=>a.sourceLeaveId===req.id).sort((a,b)=>a.date.localeCompare(b.date));
+  assert.equal(generated.length,2);
+  assert.equal(generated[0].status,'Paid Leave');
+  assert.equal(generated[1].status,'Unpaid Leave');
+  assert.equal(req.approvedPaidDays,1);
+  assert.equal(req.approvedUnpaidDays,1);
+});
+
+test('leave entitlement is tracked per employee and resets by calendar year',()=>{
+  const s=clean();s.attendance=[];s.leaves=[];
+  s.employees[0].leaveEntitlements={'Vacation Leave':1,'Sick Leave':2,'Emergency Leave':0,'Bereavement Leave':0,'Other':0};
+  const first=saveLeaveRequest(s,{employeeId:s.employees[0].id,type:'Vacation Leave',from:'2026-10-05',to:'2026-10-05',paid:true,note:'2026'});
+  approveLeave(s,first.id,{reviewer:'HR'});
+  assert.equal(leaveBalances(s,s.employees[0].id,'2026').find(x=>x.type==='Vacation Leave').remaining,0);
+  assert.equal(leaveBalances(s,s.employees[0].id,'2027').find(x=>x.type==='Vacation Leave').remaining,1);
+});
+
+test('leave requests remain approvable when paid credits are exhausted',()=>{
+  const s=clean();s.attendance=[];s.leaves=[];
+  s.employees[0].leaveEntitlements={'Vacation Leave':0,'Sick Leave':0,'Emergency Leave':0,'Bereavement Leave':0,'Other':0};
+  const req=saveLeaveRequest(s,{employeeId:s.employees[0].id,type:'Vacation Leave',from:'2026-10-05',to:'2026-10-05',paid:true,note:'No credits'});
+  assert.equal(req.status,'PENDING');
+  approveLeave(s,req.id,{reviewer:'HR'});
+  assert.equal(s.attendance.find(a=>a.sourceLeaveId===req.id).status,'Unpaid Leave');
 });
