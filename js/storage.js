@@ -86,10 +86,10 @@ export function audit(state,action,entity,oldValue=null,newValue=null){
 
 export function validateBackup(data){
   if(data?.schema!==1)throw Error('Unsupported backup format.');
-  for(const k of ['employees','attendance','payrolls','holidays','loans','audit','rules','closures'])if(!Array.isArray(data[k]))throw Error(`Missing ${k} records.`);
+  data.leaves=Array.isArray(data.leaves)?data.leaves:[];for(const k of ['employees','attendance','leaves','payrolls','holidays','loans','audit','rules','closures'])if(!Array.isArray(data[k]))throw Error(`Missing ${k} records.`);
   if(!data.settings?.company)throw Error('Missing company settings.');
   if(data.employees.length>20000||data.attendance.length>500000)throw Error('Backup is too large for this prototype.');
-  for(const k of ['employees','attendance','payrolls','holidays','loans']){
+  for(const k of ['employees','attendance','leaves','payrolls','holidays','loans']){
     const ids=data[k].map(x=>x.id);
     if(ids.some(x=>typeof x!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(x))||new Set(ids).size!==ids.length)throw Error(`Invalid or duplicate ${k} identifiers.`);
   }
@@ -97,6 +97,7 @@ export function validateBackup(data){
     if(!Array.isArray(e.statusHistory)||!validDate(e.hireDate)||!e.firstName||!e.lastName||!Array.isArray(e.rateHistory))throw Error('Invalid employee record.');
   }
   for(const a of data.attendance)if(!validDate(a.date)||!data.employees.some(e=>e.id===a.employeeId))throw Error('Invalid attendance record.');
+  for(const r of data.leaves)if(!validDate(r.from)||!validDate(r.to)||r.from>r.to||!data.employees.some(e=>e.id===r.employeeId))throw Error('Invalid leave request.');
   for(const h of data.holidays)if(!validDate(h.date)||typeof h.name!=='string')throw Error('Invalid holiday record.');
   for(const p of data.payrolls){
     if(!validDate(p.payDate)||!validDate(p.period?.from)||!validDate(p.period?.to)||!p.company||!Array.isArray(p.ruleSnapshots))throw Error('Invalid payroll dates or snapshots.');

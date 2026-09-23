@@ -3,7 +3,7 @@ import {today} from './utils.js';
 import {statusOn} from './employees.js';
 
 const SDK='12.19.0';
-const stateCollections=['employees','attendance','holidays','loans','payrolls','audit','rules','closures'];
+const stateCollections=['employees','attendance','leaves','holidays','loans','payrolls','audit','rules','closures'];
 let api=null,app=null,auth=null,db=null,currentUser=null,currentMember=null,lastLoadedState=null,lastLoadedRevision=0;
 const databaseId=cloudSettings.databaseId||'(default)';
 const LOCK_MS=90_000;
@@ -144,6 +144,11 @@ function accessRecord(employee,workspaceState){
     .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.clockInAt||'').localeCompare(String(a.clockInAt||'')))
     .slice(0,60)
     .map(a=>({id:a.id,date:a.date,status:a.status,timeIn:a.clockInDisplay||a.timeIn||'',timeOut:a.clockOutDisplay||a.timeOut||'',reviewStatus:a.reviewStatus||'',source:a.clockSource||'',otApproved:a.otApproved===true}));
+  const leaves=(workspaceState?.leaves||[])
+    .filter(r=>r.employeeId===employee.id)
+    .sort((a,b)=>String(b.requestedAt||b.from||'').localeCompare(String(a.requestedAt||a.from||'')))
+    .slice(0,20)
+    .map(r=>({id:r.id,type:r.type,from:r.from,to:r.to,status:r.status,paid:r.paid===true,reviewNote:r.reviewNote||''}));
   const payslips=(workspaceState?.payrolls||[])
     .filter(p=>p.status==='Paid')
     .flatMap(p=>(p.lines||[]).filter(l=>l.employeeId===employee.id).map(l=>({payrollId:p.id,number:p.number,payDate:p.payDate,period:p.period,kind:p.kind,gross:l.gross,totalDeductions:l.totalDeductions,net:l.net,tax:l.tax,contributions:{sss:l.contributions?.sss||0,philhealth:l.contributions?.philhealth||0,pagibig:l.contributions?.pagibig||0}})))
@@ -156,7 +161,7 @@ function accessRecord(employee,workspaceState){
     department:employee.department||'',position:employee.position||'',googleEmail:normalizedEmail(employee.googleEmail),
     companyName:workspaceState?.settings?.company?.tradeName||workspaceState?.settings?.company?.name||'',
     active,qrStatus:qrActive?'ACTIVE':'REVOKED',qrVersion:Number(employee.qrVersion||1),qrToken:qrActive?employee.qrToken:'',
-    recentAttendance:attendance,recentPayslips:payslips
+    recentAttendance:attendance,recentLeaves:leaves,recentPayslips:payslips
   };
 }
 
@@ -168,7 +173,7 @@ export async function loadCloudWorkspaceState(){
   if(meta.syncLock&&timestampMillis(meta.syncLock.expiresAt)>Date.now())throw conflictError('Another administrator is currently saving the shared payroll. Wait a few seconds, then retry Sync from cloud.');
   lastLoadedRevision=Number(meta.revision||0);
   if(meta.initialized!==true){lastLoadedState=null;return null}
-  const state={schema:meta.schema||1,settings:meta.settings||{},employees:[],attendance:[],holidays:[],loans:[],payrolls:[],audit:[],rules:[],closures:[]};
+  const state={schema:meta.schema||1,settings:meta.settings||{},employees:[],attendance:[],leaves:[],holidays:[],loans:[],payrolls:[],audit:[],rules:[],closures:[]};
   const snapshots=await Promise.all(stateCollections.map(name=>docsFromServer(wsCollection(name))));
   snapshots.forEach((snap,index)=>{state[stateCollections[index]]=snap.docs.map(d=>d.data().record).filter(Boolean)});
   lastLoadedState=structuredClone(state);return state;
@@ -261,6 +266,23 @@ export async function getEmployeeAccess(employeeId){
   if(!['EMPLOYEE','ADMIN','SUPER_ADMIN'].includes(currentMember.role))throw Error('This account has no employee access.');
   const id=employeeId||currentMember.employeeId;if(!id)return null;
   const snap=await docFromServer(wsDoc('employeeAccess',id));return snap.exists()?snap.data():null;
+}
+
+
+export async function getEmployeeLeaveRequests(){
+  if(!currentUser||!currentMember||currentMember.role!=='EMPLOYEE'||!currentMember.employeeId)throw Error('Employee cloud access is required.');
+  const q=api.query(wsCollection('leaves'),api.where('record.employeeId','==',currentMember.employeeId));
+  const snap=await docsFromServer(q);return snap.docs.map(d=>d.data().record).filter(Boolean).sort((a,b)=>String(b.requestedAt||b.from||'').localeCompare(String(a.requestedAt||a.from||''))).slice(0,20);
+}
+
+export async function submitEmployeeLeaveRequest({type,from,to,paid=true,note=''}){
+  if(!currentUser||!currentMember||currentMember.role!=='EMPLOYEE'||!currentMember.employeeId)throw Error('Employee cloud access is required.');
+  const allowed=['Vacation Leave','Sick Leave','Emergency Leave','Bereavement Leave','Unpaid Leave','Other'];
+  if(!allowed.includes(type)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(from||'')||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(to||'')||from>to)throw Error('Choose a valid leave type and date range.');
+  const span=(Date.parse(to+'T12:00:00Z')-Date.parse(from+'T12:00:00Z'))/86400000+1;if(span<1||span>62)throw Error('A leave request can cover at most 62 calendar days.');
+  if(!String(note||'').trim())throw Error('Enter the reason for your leave request.');
+  const id=`LEAVE-${crypto.randomUUID()}`,record={id,employeeId:currentMember.employeeId,type,from,to,paid:type==='Unpaid Leave'?false:Boolean(paid),note:String(note).trim(),status:'PENDING',requestedAt:new Date().toISOString(),requestedByUid:currentUser.uid,requestedByEmail:normalizedEmail(currentUser.email)};
+  await api.setDoc(wsDoc('leaves',id),{record:cleanData(record),updatedAt:api.serverTimestamp(),updatedBy:currentUser.uid},{merge:false});return record;
 }
 
 export async function inviteCloudUser({email,role,employeeId=null}){

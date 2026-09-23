@@ -72,3 +72,33 @@ html[data-theme="dark"] #sidebar{background:#050b14;border-color:#172033}html[da
 .cloud-status{display:flex;align-items:flex-start;gap:13px;padding:16px 17px;border:1px solid #cbd5e1;border-radius:13px;background:linear-gradient(135deg,#f8fafc,#f1f5f9);color:#475569}.cloud-status>span{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#e2e8f0;color:#334155;flex:0 0 auto}.cloud-status strong{display:block;color:#0f172a;margin-bottom:4px}.cloud-status p{margin:0!important;color:#64748b!important}.cloud-status.success{border-color:#bbf7d0;background:linear-gradient(135deg,#f0fdf4,#ecfdf5)}.cloud-status.success>span{background:#dcfce7;color:#15803d}.cloud-status.warning{border-color:#fde68a;background:linear-gradient(135deg,#fffbeb,#fefce8)}.cloud-status.warning>span{background:#fef3c7;color:#a16207}.cloud-status code,.legacy-auth code{font:600 .76rem ui-monospace,SFMono-Regular,Consolas,monospace}.cloud-google-btn{width:100%;min-height:46px;font-size:.9rem}.legacy-auth{margin-top:20px;border:1px solid var(--line);border-radius:12px;padding:14px 16px}.legacy-auth summary{cursor:pointer;font-weight:700;color:var(--ink)}.legacy-auth>p{margin:12px 0!important}.employee-self{display:grid;gap:22px;max-width:1100px;margin:0 auto}.self-hero{padding:28px 30px;display:flex;align-items:center;justify-content:space-between;gap:20px;background:linear-gradient(135deg,#ffffff,#f4f8f6)}.self-hero h1{margin:10px 0 6px}.self-hero p{color:var(--muted)}.cloud-badge{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:12px;color:#166534}.cloud-badge strong,.cloud-badge small{display:block}.cloud-badge small{margin-top:2px;color:#4b7560}.self-grid{display:grid;grid-template-columns:minmax(320px,.85fr) minmax(0,1.15fr);gap:22px}.self-qr-panel{padding:22px;text-align:center}.self-qr-panel .panel-head{padding:0 0 20px;text-align:left}.self-qr-panel .employee-qr-code{margin:0 auto 14px}.self-code{display:block;color:var(--ink);font:800 1.05rem Manrope,sans-serif;margin-bottom:6px}.self-qr-panel>small{display:block;color:var(--muted);line-height:1.55;max-width:380px;margin:0 auto}.form-error{margin-top:8px;color:#b91c1c;font-size:.78rem;line-height:1.5}
 html[data-theme="dark"] .cloud-status{background:#111c2d;border-color:#334155;color:#cbd5e1}html[data-theme="dark"] .cloud-status strong{color:#f8fafc}html[data-theme="dark"] .cloud-status p{color:#94a3b8!important}html[data-theme="dark"] .cloud-status.success{background:#0f2a22;border-color:#1f513e}html[data-theme="dark"] .cloud-status.warning{background:#2b2412;border-color:#5e4d18}html[data-theme="dark"] .legacy-auth{border-color:#334155}html[data-theme="dark"] .self-hero{background:linear-gradient(135deg,#0f172a,#111c2d)}html[data-theme="dark"] .cloud-badge{background:#0f2a22;border-color:#1f513e;color:#bbf7d0}html[data-theme="dark"] .cloud-badge small{color:#86b59e}
 @media(max-width:820px){.self-grid{grid-template-columns:1fr}.self-hero{align-items:flex-start;flex-direction:column}.cloud-badge{width:100%}}
+
+/* Workflow hardening: attendance, OT, leave, payroll health and kiosk mode */
+.tag.needs_review,.tag.needs-review,.tag.pending-review{background:#fff4d8;color:#9a6b12}
+.tag.open{background:#eaf2ff;color:#355f9c}
+.tag.locked{background:#edf0f4;color:#4e5f70}
+.tag.rejected,.tag.cancelled{background:#fff0ed;color:#a74e40}
+.tag.unpaid{background:#f1f2f4;color:#626d75}
+.tag.action-required{background:#fff0ed;color:#a74e40}
+.tag.healthy{background:#eaf5ee;color:#28744e}
+.table-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:220px}
+.workflow-note{border:1px solid #dbe7df;background:#f5faf6;border-radius:10px;padding:13px 15px;font-size:.78rem;line-height:1.55;color:#5d6f65;margin-bottom:18px}
+.workflow-note strong{color:var(--ink)}
+.kiosk-banner{display:none;align-items:center;justify-content:space-between;gap:18px;padding:13px 16px;margin-bottom:18px;border:1px solid #cfe0d4;border-radius:10px;background:#eff7f1}
+.kiosk-banner strong{display:block;color:var(--green);font-size:.92rem}
+.kiosk-banner small{display:block;color:var(--muted);margin-top:3px}
+.kiosk-only{display:none!important}
+body.kiosk-mode{background:#eef3f0}
+body.kiosk-mode #sidebar,body.kiosk-mode .topbar,body.kiosk-mode footer,body.kiosk-mode .kiosk-admin-only{display:none!important}
+body.kiosk-mode .workspace{margin-left:0}
+body.kiosk-mode main{padding:28px;min-height:100vh}
+body.kiosk-mode .page-head{max-width:920px;margin:0 auto 20px}
+body.kiosk-mode .page-head .kiosk-enter{display:none!important}
+body.kiosk-mode .kiosk-only{display:flex!important}
+body.kiosk-mode .kiosk-banner{display:flex!important;max-width:920px;margin-left:auto;margin-right:auto}
+body.kiosk-mode .timeclock-layout{grid-template-columns:minmax(0,920px);justify-content:center;max-width:920px;margin-left:auto;margin-right:auto}
+body.kiosk-mode .timeclock-layout>.panel{box-shadow:0 16px 45px #18392b1a}
+html[data-theme="dark"] .workflow-note{background:#0f1d2b;border-color:#25394d;color:#9db0c2}
+html[data-theme="dark"] .kiosk-banner{background:#10251c;border-color:#244734}
+html[data-theme="dark"] body.kiosk-mode{background:#081421}
+@media(max-width:760px){body.kiosk-mode main{padding:16px}.table-actions{min-width:180px}}

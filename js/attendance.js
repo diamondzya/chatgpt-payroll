@@ -5,6 +5,8 @@ import {holidayOn} from './holidays.js';
 import {selectRule} from './statutory.js';
 
 export const attendanceStatuses=['Present','Absent','Late','Undertime','Paid Leave','Unpaid Leave','Rest Day','Regular Holiday','Special Non-Working Day'];
+export const attendanceReviewStatuses=['OPEN','NEEDS_REVIEW','APPROVED','LOCKED'];
+export const overtimeStatuses=['NONE','PENDING','APPROVED','REJECTED'];
 export const OT_MINIMUM_MINUTES=60;
 export const DEFAULT_MAX_SHIFT_HOURS=16;
 
@@ -96,14 +98,23 @@ export function saveAttendance(state,a){
   }
 
   const old=state.attendance.find(x=>x.id===a.id);
-  if(old&&!a.note?.trim())throw Error('An audit note is required for corrections.');
+  if(old?.reviewStatus==='LOCKED')throw Error('This attendance record is locked by finalized payroll. Create a payroll adjustment instead.');
+  if(old&&!String(a.correctionReason||'').trim())throw Error('A new correction reason is required when editing attendance.');
+  let reviewStatus=computed.openShift?'OPEN':(a.reviewStatus||(!old?'NEEDS_REVIEW':'NEEDS_REVIEW'));
+  if(!attendanceReviewStatuses.includes(reviewStatus))reviewStatus=computed.openShift?'OPEN':'NEEDS_REVIEW';
+  const priorOt=a.otStatus||(a.otApproved?'APPROVED':'');
+  const otStatus=computed.overtimeMinutes>0?(overtimeStatuses.includes(priorOt)?priorOt:'PENDING'):'NONE';
   const item={
     ...a,
     id:old?.id||uid('ATT'),
-    reviewStatus:a.reviewStatus||old?.reviewStatus||(computed.openShift?'OPEN':'RECORDED')
+    reviewStatus,
+    otStatus,
+    otApproved:otStatus==='APPROVED',
+    correctionReason:old?String(a.correctionReason||'').trim():'',
+    updatedAt:new Date().toISOString()
   };
   if(old)state.attendance[state.attendance.indexOf(old)]=item;else state.attendance.push(item);
-  audit(state,old?'Attendance edited':'Attendance created',e.code,old||null,item);
+  audit(state,old?'Attendance corrected':'Attendance created',e.code,old||null,item);
   return item;
 }
 
@@ -113,6 +124,33 @@ export function openAttendanceFor(state,employeeId){
     .sort((a,b)=>(b.clockInAt||b.date+'T'+b.timeIn).localeCompare(a.clockInAt||a.date+'T'+a.timeIn))[0]||null;
 }
 export function todayAttendanceFor(state,employeeId,date=today()){return state.attendance.find(a=>a.employeeId===employeeId&&a.date===date)||null}
+
+export function approveAttendance(state,id,{reviewer='Administrator',note='Reviewed and approved'}={}){
+  const a=state.attendance.find(x=>x.id===id);if(!a)throw Error('Attendance record was not found.');
+  if(a.reviewStatus==='OPEN'||(a.timeIn&&!a.timeOut))throw Error('Complete Time Out before approving attendance.');
+  if(a.reviewStatus==='LOCKED')throw Error('Attendance is locked by finalized payroll.');
+  const old=structuredClone(a);a.reviewStatus='APPROVED';a.reviewedAt=new Date().toISOString();a.reviewedBy=reviewer;a.reviewNote=String(note||'Reviewed and approved').trim();
+  audit(state,'Attendance approved',state.employees.find(e=>e.id===a.employeeId)?.code||a.employeeId,old,a);return a;
+}
+
+export function decideOvertime(state,id,approved,{reviewer='Administrator',note=''}={}){
+  const a=state.attendance.find(x=>x.id===id);if(!a)throw Error('Attendance record was not found.');
+  if(a.reviewStatus==='LOCKED')throw Error('Attendance is locked by finalized payroll.');
+  const e=state.employees.find(e=>e.id===a.employeeId);if(!e)throw Error('Employee was not found.');
+  const metrics=calculateAttendance(a,employeeOn(e,a.date),{otMinimumMinutes:state.settings.otMinimumMinutes,maxShiftHours:state.settings.maxShiftHours});
+  if(metrics.overtimeMinutes<=0)throw Error('This attendance record has no qualifying overtime to approve.');
+  if(!approved&&!String(note||'').trim())throw Error('Enter a reason when rejecting overtime.');
+  const old=structuredClone(a);a.otStatus=approved?'APPROVED':'REJECTED';a.otApproved=approved;a.otReviewedAt=new Date().toISOString();a.otReviewedBy=reviewer;a.otReviewNote=String(note||'').trim();
+  audit(state,approved?'Overtime approved':'Overtime rejected',e.code,old,a);return a;
+}
+
+export function lockAttendanceForPayroll(state,payroll){
+  if(payroll.kind!=='Regular')return;const employeeIds=new Set((payroll.lines||[]).map(l=>l.employeeId));
+  for(const a of state.attendance){if(employeeIds.has(a.employeeId)&&a.date>=payroll.period.from&&a.date<=payroll.period.to&&a.reviewStatus==='APPROVED'){a.reviewStatus='LOCKED';a.payrollLockId=payroll.id;a.lockedAt=new Date().toISOString();}}
+}
+export function unlockAttendanceForPayroll(state,payroll){
+  for(const a of state.attendance){if(a.payrollLockId===payroll.id&&a.reviewStatus==='LOCKED'){a.reviewStatus='APPROVED';delete a.payrollLockId;delete a.lockedAt;}}
+}
 
 export function clockAttendance(state,employeeId,action,source='button',now=new Date(),timestampAuthority='device'){
   const employee=state.employees.find(e=>e.id===employeeId);
@@ -125,7 +163,7 @@ export function clockAttendance(state,employeeId,action,source='button',now=new 
     const existing=todayAttendanceFor(state,employeeId,clock.date);
     if(existing)throw Error('An attendance record already exists for this employee today.');
     const effective=employeeOn(employee,clock.date);
-    const item={employeeId,date:clock.date,status:'Present',timeIn:clock.time,timeOut:'',overnight:false,breakStart:effective.breakStart||'12:00',breakMinutes:Number(effective.breakMinutes??60),otApproved:false,holidayEligible:false,note:`Automatic Time In via ${source}`,clockSource:source,clockInAt:clock.iso,clockInDisplay:clock.timeWithSeconds,clockInAuthority:timestampAuthority,reviewStatus:'OPEN'};
+    const item={employeeId,date:clock.date,status:'Present',timeIn:clock.time,timeOut:'',overnight:false,breakStart:effective.breakStart||'12:00',breakMinutes:Number(effective.breakMinutes??60),otApproved:false,otStatus:'NONE',holidayEligible:false,note:`Automatic Time In via ${source}`,clockSource:source,clockInAt:clock.iso,clockInDisplay:clock.timeWithSeconds,clockInAuthority:timestampAuthority,reviewStatus:'OPEN'};
     return saveAttendance(state,item);
   }
   if(action==='out'){
@@ -139,7 +177,7 @@ export function clockAttendance(state,employeeId,action,source='button',now=new 
       let bs=minutes(open.breakStart||'12:00');if(bs<start)bs+=1440;
       if(bs<start||bs+breakMinutes>end)breakMinutes=0;
     }
-    const item={...open,timeOut:clock.time,overnight,breakMinutes,note:`Automatic Time Out via ${source}`,clockOutAt:clock.iso,clockOutDisplay:clock.timeWithSeconds,clockOutAuthority:timestampAuthority,reviewStatus:'RECORDED'};
+    const item={...open,timeOut:clock.time,overnight,breakMinutes,note:`Automatic Time Out via ${source}`,correctionReason:'Automatic clock-out completion',clockOutAt:clock.iso,clockOutDisplay:clock.timeWithSeconds,clockOutAuthority:timestampAuthority,reviewStatus:'NEEDS_REVIEW'};
     return saveAttendance(state,item);
   }
   throw Error('Unknown time clock action.');
@@ -166,7 +204,7 @@ export function payDay(state,a,e){
   // Excess work is paid as overtime only after the configured threshold is
   // exceeded AND the overtime was reviewed/approved. Previously, <= threshold
   // minutes could accidentally fall back to ordinary basic pay.
-  const overtimeApproved=metrics.overtimeMinutes>0&&a.otApproved===true;
+  const overtimeApproved=metrics.overtimeMinutes>0&&(a.otStatus==='APPROVED'||a.otApproved===true);
   const buckets=new Map();
   metrics.worked.forEach((minute,index)=>{
     const excess=index>=normal;

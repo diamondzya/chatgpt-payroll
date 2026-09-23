@@ -189,3 +189,62 @@ If the Google account chooser succeeds but the app stays on the secure-access sc
 4. On the secure-access screen click **Run Firestore diagnostic**. A 404 for the member document can be normal before first bootstrap; the diagnostic will specifically call out a missing database when the backend reports it.
 5. This build sets `forceLongPolling: true`. Firebase documents forced long-polling as a compatibility option for proxies, antivirus software, or other environments that buffer/interrupt Firestore WebChannel traffic. If your network is known-good, it can later be set to `false`.
 6. If the diagnostic cannot reach `firestore.googleapis.com`, try an InPrivate/Incognito window with extensions disabled, temporarily test another network/device, and review firewall/antivirus web filtering.
+
+## Attendance review and payroll locking
+
+Attendance now has a review lifecycle:
+
+- `OPEN` — employee has timed in but not yet timed out.
+- `NEEDS_REVIEW` — completed/manual attendance waiting for HR/Admin review.
+- `APPROVED` — eligible for payroll calculations.
+- `LOCKED` — used by an approved regular payroll and no longer directly editable.
+
+Qualifying overtime has a separate `PENDING / APPROVED / REJECTED` decision. A regular payroll will report a validation error when attendance is still open/unapproved or qualifying OT has not been explicitly decided.
+
+When a regular payroll reaches **Approved**, its source attendance is locked. If that approved-but-unpaid payroll is voided with a reason, its attendance is returned to `APPROVED`. Paid payroll remains immutable and corrections should use adjustment transactions.
+
+## Leave management
+
+Open **Leave management** to create and review leave requests. Supported types are Vacation, Sick, Emergency, Bereavement, Unpaid, and Other.
+
+- Pending requests do not affect payroll.
+- Approval creates approved Paid Leave or Unpaid Leave attendance for eligible scheduled workdays.
+- Rest days and non-working holidays are skipped.
+- Requests cannot overlap another active leave request.
+- Existing attendance must be resolved before overlapping leave can be approved.
+- Closed payroll months block leave changes that would affect payroll history.
+- Cancelling approved leave removes its generated attendance unless that attendance is already locked by payroll.
+
+Linked employees can also use **Request leave** from Employee Self-Service. Firestore rules allow employees to create only a `PENDING` request for their own linked employee ID; approval/rejection remains an administrator action.
+
+## Payroll health
+
+Open **Payroll → Payroll health** before approval. It highlights:
+
+- open shifts;
+- attendance awaiting approval;
+- pending OT decisions;
+- pending leave requests;
+- missing TIN/SSS/PhilHealth/Pag-IBIG identifiers; and
+- existing payroll validation errors.
+
+Treat this screen as a preflight checklist; the authoritative approval block remains the payroll validation engine.
+
+## QR kiosk mode
+
+Open **QR Time Clock → Enter kiosk mode** on a dedicated company scanner. Kiosk mode hides the normal sidebar/top navigation and focuses the interface on QR scanning. Exit kiosk mode from the kiosk banner/button or the browser fullscreen controls.
+
+QR punches are still subject to attendance review before payroll. Kiosk mode does not grant an Employee account access to the full workspace; it is intended for an authenticated Admin/Super Admin company device.
+
+## Firestore rules update required
+
+This build changes Firestore permissions. After deploying the website, also copy the new `firestore.rules` into **Firebase Console → Firestore Database → Rules** and click **Publish**.
+
+Notable hardening in these rules:
+
+- owner bootstrap is limited to workspace `ph-payroll-main`;
+- normal Admin / HR cannot create administrator invitations;
+- invitees may only mark their own invite as claimed;
+- employees may read only their own leave records and create only pending leave requests for their own linked employee ID;
+- leave approval/update/delete remains administrator-only;
+- the previous broad owner wildcard workspace permission is removed after the normal Super Admin member bootstrap path became reliable.

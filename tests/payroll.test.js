@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus,issueEmployeeQr,saveEmployee} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';import {table} from '../js/ui.js';
+import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance,approveAttendance,decideOvertime} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus,issueEmployeeQr,saveEmployee} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';import {table} from '../js/ui.js';import {saveLeaveRequest,approveLeave,cancelLeave} from '../js/leave.js';
 const clean=()=>{const s=demoState();s.payrolls=[];s.employees=s.employees.slice(0,1);s.employees[0].payrollType='Daily';s.employees[0].hourlyRate=10000;s.employees[0].dailyRate=80000;s.employees[0].minimumWage=false;return s};
 const pay=(s,p)=>{storePayroll(s,p);transitionPayroll(s,p.id,'Reviewed');transitionPayroll(s,p.id,'Approved');transitionPayroll(s,p.id,'Paid');return p};
 const shift=(extra={})=>({date:'2026-09-14',status:'Present',timeIn:'09:00',timeOut:'20:00',breakStart:'12:00',breakMinutes:60,otApproved:true,...extra});
@@ -77,4 +77,57 @@ test('employee schedule validation catches invalid break configuration',()=>{
 test('table renderer accepts both row arrays and pre-rendered row markup',()=>{
   assert.match(table(['A'],['<tr><td>one</td></tr>']),/one/);
   assert.match(table(['A'],'<tr><td>two</td></tr>'),/two/);
+});
+
+
+test('new attendance requires review before payroll and can be approved',()=>{
+  const s=clean();s.attendance=[];
+  const a=saveAttendance(s,{employeeId:s.employees[0].id,date:'2026-10-05',status:'Present',timeIn:'09:00',timeOut:'18:00',breakStart:'12:00',breakMinutes:60,overnight:false,otApproved:false});
+  assert.equal(a.reviewStatus,'NEEDS_REVIEW');
+  let p=generatePayroll(s,{from:'2026-10-05',to:'2026-10-05',payDate:'2026-10-05'});
+  assert(p.lines[0].errors.some(x=>x.includes('awaiting approval')));
+  approveAttendance(s,a.id,{reviewer:'HR'});
+  assert.equal(a.reviewStatus,'APPROVED');
+  p=generatePayroll(s,{from:'2026-10-05',to:'2026-10-05',payDate:'2026-10-05'});
+  assert(!p.lines[0].errors.some(x=>x.includes('awaiting approval')));
+});
+
+test('qualifying overtime uses explicit approve or reject workflow',()=>{
+  const s=clean();s.attendance=[];
+  const a=saveAttendance(s,{employeeId:s.employees[0].id,date:'2026-10-05',status:'Present',timeIn:'09:00',timeOut:'19:01',breakStart:'12:00',breakMinutes:60,overnight:false,otApproved:false});
+  assert.equal(a.otStatus,'PENDING');
+  approveAttendance(s,a.id,{reviewer:'HR'});
+  let p=generatePayroll(s,{from:'2026-10-05',to:'2026-10-05',payDate:'2026-10-05'});
+  assert(p.lines[0].errors.some(x=>x.includes('Approve or reject qualifying overtime')));
+  decideOvertime(s,a.id,true,{reviewer:'HR'});
+  assert.equal(a.otStatus,'APPROVED');
+  p=generatePayroll(s,{from:'2026-10-05',to:'2026-10-05',payDate:'2026-10-05'});
+  assert(p.lines[0].earnings.overtime>0);
+});
+
+test('approved leave creates approved attendance and cancellation removes it',()=>{
+  const s=clean();s.attendance=[];s.leaves=[];
+  const req=saveLeaveRequest(s,{employeeId:s.employees[0].id,type:'Vacation Leave',from:'2026-10-05',to:'2026-10-06',paid:true,note:'Family matter'});
+  assert.equal(req.status,'PENDING');
+  approveLeave(s,req.id,{reviewer:'HR'});
+  assert.equal(req.status,'APPROVED');
+  const generated=s.attendance.filter(a=>a.sourceLeaveId===req.id);
+  assert.equal(generated.length,2);
+  assert(generated.every(a=>a.reviewStatus==='APPROVED'&&a.status==='Paid Leave'));
+  cancelLeave(s,req.id,{reviewer:'HR',note:'Employee withdrew request'});
+  assert.equal(req.status,'CANCELLED');
+  assert.equal(s.attendance.filter(a=>a.sourceLeaveId===req.id).length,0);
+});
+
+test('approved regular payroll locks source attendance and void unlocks it',()=>{
+  const s=clean();s.attendance=[];s.settings.schedules['2026-10']=['2026-10-05'];
+  const a=saveAttendance(s,{employeeId:s.employees[0].id,date:'2026-10-05',status:'Present',timeIn:'09:00',timeOut:'18:00',breakStart:'12:00',breakMinutes:60,overnight:false,otApproved:false});
+  approveAttendance(s,a.id,{reviewer:'HR'});
+  const p=generatePayroll(s,{from:'2026-10-05',to:'2026-10-05',payDate:'2026-10-05'});storePayroll(s,p);
+  transitionPayroll(s,p.id,'Reviewed');transitionPayroll(s,p.id,'Approved');
+  assert.equal(a.reviewStatus,'LOCKED');
+  assert.equal(a.payrollLockId,p.id);
+  transitionPayroll(s,p.id,'Voided','Correction before payment');
+  assert.equal(a.reviewStatus,'APPROVED');
+  assert.equal(a.payrollLockId,undefined);
 });

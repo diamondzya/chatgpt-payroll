@@ -9,17 +9,11 @@ service cloud.firestore {
     function isAdmin(ws) { return isMember(ws) && (member(ws).role == 'ADMIN' || member(ws).role == 'SUPER_ADMIN'); }
     function isSuperAdmin(ws) { return isMember(ws) && member(ws).role == 'SUPER_ADMIN'; }
 
-    // Bootstrap/recovery path for the configured payroll owner. This is scoped
-    // to this single workspace and Google identity. It avoids a first-login
-    // circular dependency before the SUPER_ADMIN member document exists.
-    match /workspaces/{ws}/{document=**} {
-      allow read, write: if ws == 'ph-payroll-main' && isOwner();
-    }
-
     match /workspaces/{ws}/members/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin(ws));
       allow create: if signedIn() && request.auth.uid == uid && request.resource.data.active == true && (
-        (isOwner() && request.resource.data.role == 'SUPER_ADMIN' && request.resource.data.email == email()) ||
+        // The configured owner may bootstrap only the intended payroll workspace.
+        (ws == 'ph-payroll-main' && isOwner() && request.resource.data.role == 'SUPER_ADMIN' && request.resource.data.email == email()) ||
         (exists(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())) &&
          get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.active == true &&
          request.resource.data.role == get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.role &&
@@ -27,9 +21,7 @@ service cloud.firestore {
          request.resource.data.email == email())
       );
       // Super Admin manages roles. Admin / HR may only deactivate an
-      // EMPLOYEE account, and only the deactivation fields may change. This
-      // lets normal admins revoke employee access when employment ends without
-      // giving them privilege-escalation access to administrator records.
+      // EMPLOYEE account and may not alter role or identity fields.
       allow update: if isSuperAdmin(ws)
         || (
           isAdmin(ws)
@@ -39,23 +31,75 @@ service cloud.firestore {
             'active', 'deactivatedAt', 'deactivatedBy', 'deactivationReason'
           ])
           && request.resource.data.active == false
+          && request.resource.data.deactivatedBy == request.auth.uid
         );
       allow delete: if isSuperAdmin(ws);
     }
 
     match /workspaces/{ws}/invites/{inviteEmail} {
       allow read: if isAdmin(ws) || (signedIn() && email() == inviteEmail);
-      allow create, update, delete: if isAdmin(ws) || (
-        signedIn() && email() == inviteEmail &&
-        resource.data.active == true && request.resource.data.active == false &&
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.employeeId == resource.data.employeeId
+
+      // Only Super Admin can create administrator invitations. Normal Admin / HR
+      // can create employee invitations only.
+      allow create: if isSuperAdmin(ws) || (
+        isAdmin(ws)
+        && request.resource.data.role == 'EMPLOYEE'
+        && request.resource.data.email == inviteEmail
+        && request.resource.data.active == true
       );
+
+      // Admin / HR may maintain employee invitations, but administrator invites
+      // remain Super-Admin-only. An invitee may only mark their own invite claimed.
+      allow update: if isSuperAdmin(ws) || (
+        isAdmin(ws)
+        && resource.data.role == 'EMPLOYEE'
+        && request.resource.data.role == 'EMPLOYEE'
+      ) || (
+        signedIn()
+        && email() == inviteEmail
+        && resource.data.active == true
+        && request.resource.data.active == false
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.employeeId == resource.data.employeeId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','claimedBy','claimedAt'])
+        && request.resource.data.claimedBy == request.auth.uid
+      );
+      allow delete: if isSuperAdmin(ws) || (isAdmin(ws) && resource.data.role == 'EMPLOYEE');
     }
 
     match /workspaces/{ws}/state/{docId} { allow read, write: if isAdmin(ws); }
     match /workspaces/{ws}/employees/{docId} { allow read, write: if isAdmin(ws); }
     match /workspaces/{ws}/attendance/{docId} { allow read, write: if isAdmin(ws); }
+
+    match /workspaces/{ws}/leaves/{docId} {
+      allow read: if isAdmin(ws) || (
+        isMember(ws)
+        && member(ws).role == 'EMPLOYEE'
+        && resource.data.record.employeeId == member(ws).employeeId
+      );
+
+      // Employees can submit only a new pending request for their own linked
+      // employee ID. Approval/rejection/cancellation remains an admin operation.
+      allow create: if isAdmin(ws) || (
+        isMember(ws)
+        && member(ws).role == 'EMPLOYEE'
+        && request.resource.data.keys().hasOnly(['record','updatedAt','updatedBy'])
+        && request.resource.data.record.keys().hasOnly([
+          'id','employeeId','type','from','to','paid','note','status',
+          'requestedAt','requestedByUid','requestedByEmail'
+        ])
+        && request.resource.data.record.id == docId
+        && request.resource.data.record.employeeId == member(ws).employeeId
+        && request.resource.data.record.status == 'PENDING'
+        && request.resource.data.record.type in ['Vacation Leave','Sick Leave','Emergency Leave','Bereavement Leave','Unpaid Leave','Other']
+        && request.resource.data.record.from <= request.resource.data.record.to
+        && request.resource.data.record.requestedByUid == request.auth.uid
+        && request.resource.data.record.requestedByEmail == email()
+        && request.resource.data.updatedBy == request.auth.uid
+      );
+      allow update, delete: if isAdmin(ws);
+    }
+
     match /workspaces/{ws}/holidays/{docId} { allow read, write: if isAdmin(ws); }
     match /workspaces/{ws}/loans/{docId} { allow read, write: if isAdmin(ws); }
     match /workspaces/{ws}/payrolls/{docId} { allow read, write: if isAdmin(ws); }
@@ -65,11 +109,11 @@ service cloud.firestore {
 
     match /workspaces/{ws}/employeeAccess/{employeeId} {
       allow read: if isAdmin(ws) || (
-        isMember(ws) &&
-        member(ws).role == 'EMPLOYEE' &&
-        member(ws).employeeId == employeeId &&
-        resource.data.active == true &&
-        resource.data.googleEmail == email()
+        isMember(ws)
+        && member(ws).role == 'EMPLOYEE'
+        && member(ws).employeeId == employeeId
+        && resource.data.active == true
+        && resource.data.googleEmail == email()
       );
       allow write: if isAdmin(ws);
     }

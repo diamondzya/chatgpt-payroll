@@ -168,3 +168,21 @@
 - Attendance CSV templates now use the current date instead of a hard-coded sample date.
 - Added regression tests for the exact OT threshold, unapproved OT, configurable attendance limits, and QR revocation/reissue.
 - Validation: all application JavaScript passes syntax checks and the automated payroll suite passes **33/33 tests**.
+
+## 2026-09-23 · Workflow, leave, kiosk, and payroll health update
+
+- Added an explicit attendance review workflow: `OPEN` → `NEEDS_REVIEW` → `APPROVED` → `LOCKED`.
+- New/manual/QR-completed attendance is no longer automatically payroll-ready. HR/Admin must approve it before regular payroll can pass validation.
+- Editing an existing attendance record requires a fresh correction reason and locked attendance cannot be edited directly.
+- Added explicit overtime decisions (`PENDING`, `APPROVED`, `REJECTED`). Qualifying overtime blocks payroll review until HR/Admin approves or rejects it.
+- Approved regular payroll now locks the attendance records used by that payroll. Voiding an unpaid approved payroll unlocks those records back to `APPROVED`.
+- Added **Leave management** with Vacation, Sick, Emergency, Bereavement, Unpaid, and Other leave types.
+- Employees can submit their own pending leave request from the Firebase employee portal. HR/Admin approval creates approved Paid Leave / Unpaid Leave attendance for eligible scheduled workdays.
+- Leave overlap, closed-month, existing-attendance, rest-day, holiday, and active-employment checks were added. Approved leave cancellation removes generated attendance unless payroll has already locked it.
+- Added a **Payroll health** tab that surfaces open shifts, attendance awaiting review, pending OT, pending leave, missing government IDs, and payroll validation errors before approval.
+- Added dedicated **Kiosk mode** for the QR Time Clock. Kiosk mode hides administrative navigation and focuses the screen on employee scanning.
+- Added sidebar counters for attendance items requiring action and pending leave requests.
+- Hardened Firestore rules: removed the previous broad owner wildcard, scoped owner bootstrap to `ph-payroll-main`, prevented normal Admin accounts from creating Admin invitations, tightened invite claiming, and restricted employee leave creation to pending requests for the signed-in employee only.
+- Employee self-service now includes leave requests in addition to QR, attendance, and paid payroll summaries.
+- Added regression tests covering attendance approval, OT approval, leave approval/cancellation, and payroll attendance locking.
+- Validation: automated payroll/workflow suite passes **37/37 tests**.
