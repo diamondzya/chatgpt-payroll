@@ -186,3 +186,12 @@
 - Employee self-service now includes leave requests in addition to QR, attendance, and paid payroll summaries.
 - Added regression tests covering attendance approval, OT approval, leave approval/cancellation, and payroll attendance locking.
 - Validation: automated payroll/workflow suite passes **37/37 tests**.
+
+
+## Employee cloud-session routing hotfix — 2026-09-23
+- Made cloud role/session establishment atomic: an employee is no longer treated as connected until Employee Access has loaded successfully.
+- Fixed Retry workspace connection leaving a partial EMPLOYEE session that could hide the login gate and reveal the cached administrator shell.
+- Retry now clears partial cloud persistence/session state before reconnecting and again on failure.
+- Relaxed the employeeAccess Firestore read rule to rely on the authenticated member-to-employee link instead of duplicated mirror email/active fields, preventing valid employees from being locked out by older mirror documents.
+- Employee portal can fall back to its privacy-limited mirrored leave list if an older Firestore deployment temporarily blocks the direct leave query.
+- Removed the administrator Access & QR settings button from employee account/profile UI.

@@ -108,12 +108,15 @@ service cloud.firestore {
     match /workspaces/{ws}/closures/{docId} { allow read, write: if isAdmin(ws); }
 
     match /workspaces/{ws}/employeeAccess/{employeeId} {
+      // The authenticated member record is the authorization source. Do not
+      // additionally depend on duplicated googleEmail/active fields inside the
+      // employeeAccess mirror: older mirrors may not contain those fields and
+      // could lock a correctly invited employee out. HR still controls access by
+      // activating/deactivating the member and its linked employeeId.
       allow read: if isAdmin(ws) || (
         isMember(ws)
         && member(ws).role == 'EMPLOYEE'
         && member(ws).employeeId == employeeId
-        && resource.data.active == true
-        && resource.data.googleEmail == email()
       );
       allow write: if isAdmin(ws);
     }
