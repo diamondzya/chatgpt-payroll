@@ -20,9 +20,21 @@ service cloud.firestore {
          request.resource.data.employeeId == get(/databases/$(database)/documents/workspaces/$(ws)/invites/$(email())).data.employeeId &&
          request.resource.data.email == email())
       );
-      // Super Admin manages roles. Admin / HR may only deactivate an
-      // EMPLOYEE account and may not alter role or identity fields.
-      allow update: if isSuperAdmin(ws)
+      // The configured owner can always repair their own member document back
+      // to the canonical SUPER_ADMIN identity for this one workspace. This is a
+      // recovery path for stale records created by older builds; it cannot be used
+      // to promote another UID or another email.
+      allow update: if (
+          ws == 'ph-payroll-main'
+          && isOwner()
+          && request.auth.uid == uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.email == email()
+          && request.resource.data.role == 'SUPER_ADMIN'
+          && request.resource.data.active == true
+          && request.resource.data.employeeId == null
+        )
+        || isSuperAdmin(ws)
         || (
           isAdmin(ws)
           && resource.data.role == 'EMPLOYEE'

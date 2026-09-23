@@ -1,3 +1,10 @@
+# 2026-09-23 Owner access recovery fix
+
+- Added automatic self-repair for the configured owner member record.
+- If an older build left the owner as EMPLOYEE/ADMIN, inactive, or linked to an employee ID, signing in with the configured owner email restores the same Firebase UID to `SUPER_ADMIN`.
+- Added a narrowly scoped Firestore recovery rule: only `madriagakenneth22@gmail.com`, only its own UID, and only workspace `ph-payroll-main` can use this recovery path.
+- This prevents the owner from being locked out by stale cloud member data while preserving employee/admin isolation.
+
 # Update summary
 
 ## Requested feature changes

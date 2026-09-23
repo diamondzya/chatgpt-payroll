@@ -109,21 +109,42 @@ async function memberDoc(uid){const snap=await api.getDoc(wsDoc('members',uid));
 export async function authorizeCloudUser(){
   if(!currentUser)throw Error('Sign in with Google first.');
   try{
+    const email=normalizedEmail(currentUser.email),owner=normalizedEmail(cloudSettings.ownerEmail);
+    const ownerLogin=Boolean(email&&owner&&email===owner);
     let member=await memberDoc(currentUser.uid);
-    if(member?.active===false)throw Error('This payroll account has been deactivated.');
-    if(!member){
-      const email=normalizedEmail(currentUser.email),owner=normalizedEmail(cloudSettings.ownerEmail);
-      if(email&&owner&&email===owner){
-        const data={uid:currentUser.uid,email,displayName:currentUser.displayName||email,role:'SUPER_ADMIN',employeeId:null,active:true,createdAt:api.serverTimestamp()};
+
+    // The configured workspace owner is the recovery root for the company.
+    // Older builds could leave an owner member document with an obsolete role,
+    // inactive flag, or stale employee link. Repair that record before any role-
+    // gated workspace read so the owner cannot get permanently locked out.
+    if(ownerLogin){
+      const needsRepair=!member||member.role!=='SUPER_ADMIN'||member.active!==true||normalizedEmail(member.email)!==email||member.employeeId;
+      if(needsRepair){
+        const data={
+          uid:currentUser.uid,
+          email,
+          displayName:currentUser.displayName||email,
+          role:'SUPER_ADMIN',
+          employeeId:null,
+          active:true,
+          owner:true,
+          ownerRecoveredAt:api.serverTimestamp()
+        };
+        if(!member)data.createdAt=api.serverTimestamp();
         await api.setDoc(wsDoc('members',currentUser.uid),data,{merge:true});
-      }else{
+        member=await memberDoc(currentUser.uid);
+      }
+      if(!member||member.role!=='SUPER_ADMIN'||member.active!==true)throw Error('The configured owner account could not be restored as Super Admin. Publish the latest Firestore rules, then retry the workspace connection.');
+    }else{
+      if(member?.active===false)throw Error('This payroll account has been deactivated.');
+      if(!member){
         const inviteRef=wsDoc('invites',email),inviteSnap=await api.getDoc(inviteRef),invite=inviteSnap.exists()?inviteSnap.data():null;
         if(!invite||invite.active===false)throw Error('This Google account is not registered in this payroll workspace. Ask the payroll administrator to invite your Google email.');
         const data={uid:currentUser.uid,email,displayName:currentUser.displayName||email,role:invite.role||'EMPLOYEE',employeeId:invite.employeeId||null,active:true,createdAt:api.serverTimestamp()};
         await api.setDoc(wsDoc('members',currentUser.uid),data,{merge:true});
         await api.setDoc(inviteRef,{active:false,claimedBy:currentUser.uid,claimedAt:api.serverTimestamp()},{merge:true});
+        member=await memberDoc(currentUser.uid);
       }
-      member=await memberDoc(currentUser.uid);
     }
     currentMember=member;return structuredClone(member);
   }catch(error){error.message=friendlyWorkspaceError(error);throw error}
