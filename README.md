@@ -279,3 +279,11 @@ Notable hardening in these rules:
 ## Premium login front page
 
 The login screen uses `assets/login-finance-bg.png` as a finance/payroll visual backdrop. The sign-in card remains real HTML/CSS, so Google/Firebase buttons and authentication errors remain interactive and responsive instead of being baked into a screenshot.
+
+## Employee rest days and self-service payslips
+
+Each employee can now have multiple explicit weekly rest days. Edit an employee and select between one and six days in **Weekly rest days**. Existing records created by older builds are migrated in memory using the prior `restDay + normalDays` schedule behavior, so a legacy five-day workweek retains its second implied rest day.
+
+Employee self-service accounts can open the breakdown of each synchronized paid payslip and download it as an A4 PDF. The PDF feature loads `html2pdf.js` from jsDelivr, so the browser needs internet access when exporting. Administrators refresh privacy-limited employee self-service mirrors automatically when they connect to the cloud workspace.
+
+Dialogs intentionally do not close from backdrop clicks or the Escape key. Use the visible **X** or **Cancel** control to avoid losing unsaved payroll/employee form changes.

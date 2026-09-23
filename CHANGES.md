@@ -228,3 +228,19 @@
 - Added annual-reset and automatic-unpaid regression coverage.
 - Fixed the secure Google/Firebase login gate overflowing outside its card when Firestore errors and three retry buttons were shown. Retry controls now stack inside the card, wrap safely, and remain responsive on small screens.
 - Validation: all JavaScript passes syntax checks and the automated payroll/workflow suite passes **40/40 tests**.
+
+## 2026-09-23 · Rest days, modal safety, dark mode, employee payslips
+
+- Replaced the employee "Primary rest day" selector with a multi-day weekly rest-day picker (1–6 days).
+- Preserved legacy schedules: old single-rest-day records are upgraded using their previous normal-days-per-week behavior.
+- Rest-day classification now honors the exact employee-specific selected rest days in attendance, leave allocation, and payroll premium calculations.
+- Dialogs no longer close when clicking the backdrop; Escape is also blocked so users do not accidentally lose form work. Use the X/Cancel controls explicitly.
+- Fixed dark-mode readability for automatic compensation cards and read-only auto-computed salary fields.
+- Fixed dark-mode readability across payslip/report previews, tables, notes, callouts, modal content, schedule controls, and several other light-only surfaces found during the UI scan.
+- Print/PDF report styling is forced to a clean white document even when the application is in dark mode.
+- Employee self-service payslip rows now open a full earnings/deductions/YTD breakdown.
+- Employees can download their own payslip directly as an A4 PDF (html2pdf.js) or print it.
+- Employee self-service Firestore mirrors now include privacy-limited detailed payslip data instead of summary totals only.
+- Added an automatic admin-login refresh for employee self-service mirrors, so older Firestore employeeAccess documents are upgraded without needing a payroll edit.
+- Fixed employeeAccess synchronization to compare against the actual Firestore mirror instead of regenerating the previous local snapshot, preventing schema upgrades from being skipped.
+- Added regression coverage for multiple rest days and compatibility migration.

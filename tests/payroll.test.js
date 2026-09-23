@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance,approveAttendance,decideOvertime} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus,issueEmployeeQr,saveEmployee} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';import {table} from '../js/ui.js';import {saveLeaveRequest,approveLeave,cancelLeave,leaveBalances,leavePaySummary} from '../js/leave.js';
+import {demoState} from '../js/seed.js';import {calculateAttendance,payDay,saveAttendance,approveAttendance,decideOvertime,isRest} from '../js/attendance.js';import {selectRule,calculateSSS,calculatePhilHealth,calculatePagIBIG,contributionKeys,validateRule} from '../js/statutory.js';import {calculateWithholdingTax} from '../js/tax.js';import {generatePayroll,storePayroll,transitionPayroll,validatePayroll,remainingLoan,monthReconciliation,reconcilePayroll,closeMonth,reopenMonth,paidLines,generateThirteenth,yearEndPayroll,adjustmentPayroll,finishLine,baseLine} from '../js/payroll.js';import {generate1601C,generate2316} from '../js/reports.js';import {activeOn,changeStatus,issueEmployeeQr,saveEmployee,normalizeRestDays} from '../js/employees.js';import {sum,esc,parseCSV,cents} from '../js/utils.js';import {table} from '../js/ui.js';import {saveLeaveRequest,approveLeave,cancelLeave,leaveBalances,leavePaySummary} from '../js/leave.js';
 const clean=()=>{const s=demoState();s.payrolls=[];s.employees=s.employees.slice(0,1);s.employees[0].payrollType='Daily';s.employees[0].hourlyRate=10000;s.employees[0].dailyRate=80000;s.employees[0].minimumWage=false;return s};
 const pay=(s,p)=>{storePayroll(s,p);transitionPayroll(s,p.id,'Reviewed');transitionPayroll(s,p.id,'Approved');transitionPayroll(s,p.id,'Paid');return p};
 const shift=(extra={})=>({date:'2026-09-14',status:'Present',timeIn:'09:00',timeOut:'20:00',breakStart:'12:00',breakMinutes:60,otApproved:true,...extra});
@@ -165,4 +165,24 @@ test('leave requests remain approvable when paid credits are exhausted',()=>{
   assert.equal(req.status,'PENDING');
   approveLeave(s,req.id,{reviewer:'HR'});
   assert.equal(s.attendance.find(a=>a.sourceLeaveId===req.id).status,'Unpaid Leave');
+});
+
+
+test('employees can have multiple explicit weekly rest days',()=>{
+  const s=clean(),e=s.employees[0];e.restDays=[0,6];e.restDay=0;e.normalDays=5;
+  assert.equal(isRest(e,'2026-09-13'),true); // Sunday
+  assert.equal(isRest(e,'2026-09-19'),true); // Saturday
+  assert.equal(isRest(e,'2026-09-14'),false); // Monday
+});
+
+test('legacy single rest day normalizes without losing compatibility',()=>{
+  assert.deepEqual(normalizeRestDays(undefined,0),[0]);
+  assert.deepEqual(normalizeRestDays([6,0,6],0),[0,6]);
+});
+
+test('employee save keeps selected rest days in rate history',()=>{
+  const s=clean(),e=structuredClone(s.employees[0]);
+  const saved=saveEmployee(s,{...e,effectiveDate:'2026-09-01',restDay:0,restDays:[0,6]});
+  assert.deepEqual(saved.restDays,[0,6]);
+  assert.deepEqual(saved.rateHistory.at(-1).values.restDays,[0,6]);
 });

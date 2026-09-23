@@ -176,11 +176,23 @@ function accessRecord(employee,workspaceState){
     }));
   const balanceYear=today().slice(0,4);
   const balances=leaveBalances(workspaceState,employee.id,balanceYear);
-  const payslips=(workspaceState?.payrolls||[])
-    .filter(p=>p.status==='Paid')
-    .flatMap(p=>(p.lines||[]).filter(l=>l.employeeId===employee.id).map(l=>({payrollId:p.id,number:p.number,payDate:p.payDate,period:p.period,kind:p.kind,gross:l.gross,totalDeductions:l.totalDeductions,net:l.net,tax:l.tax,contributions:{sss:l.contributions?.sss||0,philhealth:l.contributions?.philhealth||0,pagibig:l.contributions?.pagibig||0}})))
-    .sort((a,b)=>String(b.payDate||'').localeCompare(String(a.payDate||'')))
-    .slice(0,12);
+  const paidPayrolls=(workspaceState?.payrolls||[]).filter(p=>p.status==='Paid').sort((a,b)=>String(a.payDate||'').localeCompare(String(b.payDate||'')));
+  const employeePaidLines=paidPayrolls.flatMap(p=>(p.lines||[]).filter(l=>l.employeeId===employee.id).map(l=>({p,l})));
+  const payslips=employeePaidLines.map(({p,l})=>{
+    const year=String(p.payDate||'').slice(0,4);
+    const ytd=employeePaidLines.filter(x=>String(x.p.payDate||'').startsWith(year)&&String(x.p.payDate||'')<=String(p.payDate||''));
+    const total=(fn)=>ytd.reduce((n,x)=>n+Number(fn(x.l)||0),0);
+    return {
+      payrollId:p.id,number:p.number,payDate:p.payDate,period:cleanData(p.period||{}),kind:p.kind,status:p.status,
+      employee:{name:[employee.firstName,employee.middleName,employee.lastName,employee.suffix].filter(Boolean).join(' '),code:employee.code,department:employee.department||'',position:employee.position||''},
+      company:{name:p.company?.name||workspaceState?.settings?.company?.name||'',address:p.company?.address||workspaceState?.settings?.company?.address||'',zip:p.company?.zip||workspaceState?.settings?.company?.zip||''},
+      gross:Number(l.gross||0),taxable:Number(l.taxable||0),totalDeductions:Number(l.totalDeductions||0),net:Number(l.net||0),tax:Number(l.tax||0),loan:Number(l.loan||0),otherDeductions:Number(l.otherDeductions||0),regularHours:Number(l.regularHours||0),overtimeHours:Number(l.overtimeHours||0),
+      earnings:cleanData(l.earnings||{}),timeDeductions:cleanData(l.timeDeductions||{}),
+      contributions:{sss:Number(l.contributions?.sss||0),philhealth:Number(l.contributions?.philhealth||0),pagibig:Number(l.contributions?.pagibig||0)},
+      ytd:{gross:total(x=>x.gross),taxable:total(x=>x.taxable),tax:total(x=>x.tax),mandatory:total(x=>(x.contributions?.sss||0)+(x.contributions?.philhealth||0)+(x.contributions?.pagibig||0))},
+      ruleVersions:(p.ruleSnapshots||[]).map(r=>`${r.version} (${r.effectiveFrom})`)
+    };
+  }).sort((a,b)=>String(b.payDate||'').localeCompare(String(a.payDate||''))).slice(0,12);
   return {
     employeeId:employee.id,
     code:employee.code,
@@ -237,7 +249,12 @@ export async function saveCloudWorkspaceState(state){
       for(const key of prev.keys())if(!next.has(key))ops.push({type:'delete',ref:wsDoc(name,key)});
     }
 
-    const prevAccess=new Map((lastLoadedState?.employees||[]).map(e=>[e.id,JSON.stringify(accessRecord(e,lastLoadedState))]));
+    // Compare against the employeeAccess documents that are actually in Firestore,
+    // not a locally regenerated copy of the previous workspace. This also upgrades
+    // older self-service records when the access schema gains new fields (for
+    // example detailed payslip breakdowns) even when payroll data itself did not change.
+    const accessSnapshot=await docsFromServer(wsCollection('employeeAccess'));
+    const prevAccess=new Map(accessSnapshot.docs.map(docSnap=>{const raw=docSnap.data()||{},data={...raw};delete data.updatedAt;delete data.updatedBy;return [docSnap.id,JSON.stringify(cleanData(data))]}));
     const nextAccess=new Map((state.employees||[]).map(e=>[e.id,JSON.stringify(accessRecord(e,state))]));
     for(const employee of state.employees||[]){
       const data=accessRecord(employee,state);
@@ -276,6 +293,18 @@ export async function saveCloudWorkspaceState(state){
     await batch.commit();
     lastLoadedRevision=nextRevision;lastLoadedState=structuredClone(state);return true;
   }catch(error){await releaseSyncLock(token);error.message=friendlyWorkspaceError(error);throw error}
+}
+
+export async function refreshEmployeeAccessRecords(state){
+  assertAdmin();
+  const snapshot=await docsFromServer(wsCollection('employeeAccess'));
+  const remote=new Map(snapshot.docs.map(docSnap=>{const raw=docSnap.data()||{},data={...raw};delete data.updatedAt;delete data.updatedBy;return [docSnap.id,JSON.stringify(cleanData(data))]}));
+  const ops=[];
+  for(const employee of state.employees||[]){const data=accessRecord(employee,state);if(remote.get(employee.id)!==JSON.stringify(data))ops.push({type:'set',ref:wsDoc('employeeAccess',employee.id),data:{...data,updatedAt:api.serverTimestamp(),updatedBy:currentUser.uid}});remote.delete(employee.id)}
+  for(const id of remote.keys())ops.push({type:'delete',ref:wsDoc('employeeAccess',id)});
+  if(!ops.length)return 0;
+  if(ops.length>450)throw Error('Too many employee self-service records require refresh at once. Save smaller workspace changes or run a server-side migration.');
+  const batch=api.writeBatch(db);for(const op of ops)applyBatchOp(batch,op);await batch.commit();return ops.length;
 }
 
 export async function getCloudServerTime(){

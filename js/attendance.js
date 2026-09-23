@@ -22,7 +22,7 @@ export function manilaClock(date=new Date()){
   const p=phParts(date);
   return {date:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`,timeWithSeconds:`${p.hour}:${p.minute}:${p.second}`,iso:date.toISOString()};
 }
-export function isRest(e,date){const day=weekday(date),rest=Number(e.restDay);const distance=(day-rest+7)%7;return distance===0||distance>Number(e.normalDays)}
+export function isRest(e,date){const day=weekday(date);if(Array.isArray(e.restDays)&&e.restDays.length)return e.restDays.map(Number).includes(day);const rest=Number(e.restDay);const distance=(day-rest+7)%7;return distance===0||distance>Number(e.normalDays)}
 
 function attendancePolicy(policy={}){
   if(typeof policy==='number')return {otMinimumMinutes:policy,maxShiftHours:DEFAULT_MAX_SHIFT_HOURS};

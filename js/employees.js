@@ -3,6 +3,15 @@ import {audit} from './storage.js';
 
 export const statuses=['ACTIVE','INACTIVE','SUSPENDED','RESIGNED','TERMINATED'];
 export const leaveEntitlementTypes=['Vacation Leave','Sick Leave','Emergency Leave','Bereavement Leave','Other'];
+export const weekdayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+export function normalizeRestDays(value,fallback=0,normalDays=null){
+  const source=Array.isArray(value)?value:[value];
+  const days=[...new Set(source.map(Number).filter(n=>Number.isInteger(n)&&n>=0&&n<=6))].sort((a,b)=>a-b);
+  if(days.length)return days;
+  const f=Number(fallback),n=Number(normalDays);const base=Number.isInteger(f)&&f>=0&&f<=6?f:0;
+  if(Number.isFinite(n)&&n>=1&&n<=6)return weekdayNames.map((_name,day)=>day).filter(day=>{const distance=(day-base+7)%7;return distance===0||distance>n});
+  return [base];
+}
 export function normalizeLeaveEntitlements(value={}){
   return Object.fromEntries(leaveEntitlementTypes.map(type=>{
     const n=Number(value?.[type]??0);
@@ -23,7 +32,7 @@ export function employeeOn(e,date){
   return {...e,...(r?.values||{})};
 }
 
-export const rateFields=['payrollType','monthlyBasic','weeklyRate','dailyRate','hourlyRate','normalHours','normalDays','restDay','scheduleIn','scheduleOut','breakStart','breakMinutes','monthlyDivisor','minimumWage','wageBasis','allowance','branch'];
+export const rateFields=['payrollType','monthlyBasic','weeklyRate','dailyRate','hourlyRate','normalHours','normalDays','restDay','restDays','scheduleIn','scheduleOut','breakStart','breakMinutes','monthlyDivisor','minimumWage','wageBasis','allowance','branch'];
 
 function normalizedEmail(value){return String(value||'').trim().toLowerCase()}
 function validOptionalEmail(value){return !value||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)}
@@ -58,6 +67,9 @@ export function saveEmployee(state,input){
   if(Number(input.breakMinutes||0)>0&&!validClock(input.breakStart||'12:00'))throw Error('Enter a valid scheduled break start time.');
   if(Number(input.breakMinutes||0)<0||Number(input.breakMinutes||0)>240)throw Error('Unpaid break must be between 0 and 240 minutes.');
   if(input.minimumWage&&!input.wageBasis?.trim())throw Error('Enter the applicable regional wage order / basis for MWE status.');
+  input.restDays=normalizeRestDays(input.restDays,input.restDay,input.normalDays);
+  if(input.restDays.length<1||input.restDays.length>6)throw Error('Choose between 1 and 6 weekly rest days.');
+  input.restDay=input.restDays[0]; // legacy compatibility for older payroll snapshots
   input.leaveEntitlements=normalizeLeaveEntitlements(input.leaveEntitlements);
   for(const [type,value] of Object.entries(input.leaveEntitlements)){
     if(!Number.isInteger(value)||value<0||value>366)throw Error(`${type} entitlement must be a whole number from 0 to 366 days.`);
